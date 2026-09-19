@@ -12,10 +12,15 @@
     "dev": "node --env-file-if-exists=.env --watch backend/server.js",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
     "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
-    "check-gateway": "node --env-file-if-exists=.env scripts/check-gateway.js"
+    "check-gateway": "node --env-file-if-exists=.env scripts/check-gateway.js",
+    "test": "node --env-file-if-exists=.env scripts/test-database.js"
   },
   "dependencies": {
     "express": "^5.1.0",
-    "express-rate-limit": "^8.1.0"
+    "express-rate-limit": "^8.1.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }

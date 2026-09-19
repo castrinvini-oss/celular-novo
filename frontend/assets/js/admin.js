@@ -251,8 +251,7 @@ async function saveSettings(event) {
   }
 
   const quickAmounts = value('quick_reais')
-    .split(/[;
-]/)
+    .split(/[;\n]/)
     .map((part) => reaisTextToCents(part))
     .filter((cents) => Number.isInteger(cents) && cents > 0);
 

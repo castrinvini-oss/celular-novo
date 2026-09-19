@@ -6,7 +6,9 @@ qualidade dos conteúdos de uma página de memes.
 - 🎯 Meta: **R$ 2.000,00**
 - 💸 Doação mínima: **R$ 1,00** · máxima: **R$ 1.000,00**
 - 💳 Gateway: **MisticPay** (Pix) — <https://docs.misticpay.com/>
-- 🖥️ Stack: Node.js + Express + SQLite + frontend em HTML/CSS/JS puro (sem build)
+- 🖥️ Stack: Node.js + Express + frontend em HTML/CSS/JS puro (sem build)
+- 🗄️ Banco: **SQLite** por padrão (zero configuração) ou **PostgreSQL/Supabase** (basta definir `DATABASE_URL`)
+- ☁️ Deploy: VPS, Render/Railway ou **Vercel + Supabase** — veja [DEPLOY-VERCEL-SUPABASE.md](DEPLOY-VERCEL-SUPABASE.md)
 
 ---
 
@@ -52,14 +54,20 @@ Não existe modo de simulação, pagamento fake ou botão de "marcar como pago" 
 
 ```
 celular-novo/
+├── api/
+│   └── index.js                   # ponto de entrada serverless (Vercel)
+├── vercel.json                    # rotas, estáticos e cron da Vercel
 ├── backend/
-│   ├── server.js                  # Express: API + arquivos estáticos + boot
+│   ├── app.js                     # aplicação Express (compartilhada)
+│   ├── server.js                  # processo tradicional: listen + rotina periódica
 │   ├── config/
 │   │   ├── env.js                 # variáveis de ambiente (único lugar com credenciais)
 │   │   └── campaign.defaults.js   # textos/valores iniciais da campanha
 │   ├── database/
-│   │   ├── db.js                  # conexão SQLite (node:sqlite, sem dependência nativa)
-│   │   ├── schema.sql             # tabelas
+│   │   ├── db.js                  # escolhe o driver e isola as diferenças de dialeto
+│   │   ├── drivers/               # sqlite.js (node:sqlite) e postgres.js (pg)
+│   │   ├── schema.sqlite.sql      # tabelas (SQLite)
+│   │   ├── schema.postgres.sql    # tabelas (Postgres/Supabase)
 │   │   └── repositories/          # donations, settings, admin
 │   ├── gateways/
 │   │   ├── gateway.interface.js   # contrato — troque de gateway sem reescrever nada
@@ -69,7 +77,7 @@ celular-novo/
 │   │   ├── campaign.service.js    # meta, progresso, apoiadores, configurações
 │   │   └── donation.service.js    # validação, cobrança, confirmação, reconciliação
 │   ├── api/
-│   │   ├── routes/                # campaign, donations, admin
+│   │   ├── routes/                # campaign, donations, admin, cron
 │   │   └── middleware/            # auth, rate limit, erros
 │   ├── webhooks/
 │   │   └── misticpay.webhook.js   # POST /api/webhooks/misticpay
@@ -85,8 +93,10 @@ celular-novo/
 ├── scripts/
 │   ├── migrate.js                 # cria as tabelas
 │   ├── create-admin.js            # cria o usuário do painel
-│   └── check-gateway.js           # diagnóstico da integração
+│   ├── check-gateway.js           # diagnóstico da integração
+│   └── test-database.js           # testes das regras nos dois bancos (npm test)
 ├── data/                          # banco SQLite (gerado, fora do git)
+├── DEPLOY-VERCEL-SUPABASE.md      # passo a passo do deploy serverless
 └── .env.example
 ```
 
@@ -105,6 +115,16 @@ npm run migrate
 npm run create-admin
 npm run dev
 ```
+
+Para conferir se as regras críticas continuam de pé (uma doação só entra no total quando
+está paga, confirmar duas vezes não soma duas vezes, cobrança vencida expira...):
+
+```bash
+npm test
+```
+
+Os testes rodam a mesma bateria **nos dois bancos**: SQLite em arquivo temporário e
+PostgreSQL de verdade via PGlite (WebAssembly), sem precisar instalar servidor nenhum.
 
 Abra <http://localhost:3000> (campanha) e <http://localhost:3000/admin> (painel).
 
@@ -260,7 +280,8 @@ Use apenas imagens que você tem direito de publicar.
 
 ## 🗄️ Banco de dados
 
-SQLite, criado em `data/campanha.db`. **Todos os valores em centavos (INTEGER).**
+SQLite em `data/campanha.db` por padrão; PostgreSQL quando `DATABASE_URL` está definida.
+Os dois esquemas são equivalentes. **Todos os valores em centavos (INTEGER).**
 
 ### `donations`
 
@@ -280,7 +301,8 @@ SQLite, criado em `data/campanha.db`. **Todos os valores em centavos (INTEGER).*
 Só `status = 'PAID'` entra no cálculo da arrecadação.
 
 Outras tabelas: `gateway_events` (auditoria de webhooks), `settings` (configurações
-editáveis), `admins` e `admin_sessions`.
+editáveis), `admins`, `admin_sessions` e `login_attempts` (bloqueio de força bruta que
+funciona também em serverless, onde um limitador em memória não serviria).
 
 ### Cálculo
 
@@ -305,7 +327,8 @@ restante         = max(0, meta - total_arrecadado)
 | `GET` | `/api/admin/overview` · `/donations` · `/settings` | dados do painel |
 | `PUT` | `/api/admin/settings` | altera a campanha |
 | `POST` | `/api/admin/donations/:id/recheck` · `/reconcile` | reconferência manual |
-| `GET` | `/api/health` | healthcheck |
+| `GET` | `/api/cron/reconcile` | manutenção periódica (exige `Authorization: Bearer $CRON_SECRET`) |
+| `GET` | `/api/health` | healthcheck (mostra qual banco está em uso) |
 
 Exemplo de criação de doação:
 
@@ -367,7 +390,7 @@ Gere os segredos com:
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-### Opção A — VPS com Nginx + systemd
+### Opção A — VPS com Nginx + systemd (SQLite, sem banco externo)
 
 ```bash
 npm ci --omit=dev
@@ -414,7 +437,15 @@ server {
 }
 ```
 
-### Opção B — Render / Railway / Fly.io
+### Opção B — Vercel + Supabase (serverless, grátis)
+
+Guia completo e passo a passo: **[DEPLOY-VERCEL-SUPABASE.md](DEPLOY-VERCEL-SUPABASE.md)**.
+
+Em resumo: o banco vira Postgres no Supabase (`DATABASE_URL`), o site roda como função
+serverless a partir de `api/index.js` (configurado em `vercel.json`) e a rotina periódica
+vira o cron `GET /api/cron/reconcile`.
+
+### Opção C — Render / Railway / Fly.io
 
 - Build: `npm ci`
 - Start: `npm start`
@@ -462,6 +493,7 @@ Nenhum service, rota, tabela ou tela precisa mudar.
 | Webhook retorna `401` | Token da URL diferente de `MISTICPAY_WEBHOOK_TOKEN` |
 | Banco zerado após deploy | Falta disco persistente — aponte `DATABASE_FILE` para o volume |
 | Rate limit disparando cedo demais | Defina `TRUST_PROXY=1` quando houver proxy na frente |
+| Na Vercel, dados somem | Faltou `DATABASE_URL`: em serverless o SQLite não persiste |
 
 ---
 

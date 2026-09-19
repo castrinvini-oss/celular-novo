@@ -58,6 +58,17 @@ const config = {
     ? str('DATABASE_FILE')
     : path.resolve(ROOT_DIR, str('DATABASE_FILE', './data/campanha.db')),
 
+  /**
+   * Quando DATABASE_URL existe, o projeto usa Postgres (Supabase, Neon...).
+   * Sem ela, usa SQLite no arquivo acima.
+   */
+  databaseUrl: str('DATABASE_URL'),
+  databaseSsl: str('DATABASE_SSL', 'true') !== 'false',
+  databasePoolMax: int('DATABASE_POOL_MAX', 3),
+
+  /** Segredo do cron de reconciliacao (usado em serverless). */
+  cronSecret: str('CRON_SECRET'),
+
   campaign: {
     /** Meta inicial da campanha, em centavos. Pode ser alterada no /admin. */
     goalCents: Math.round(num('CAMPAIGN_GOAL', 2000) * 100),

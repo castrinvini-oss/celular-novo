@@ -4,6 +4,9 @@
  * Uso interativo:   npm run create-admin
  * Uso direto:       npm run create-admin -- meuusuario "minha senha forte"
  *
+ * Respeita o DATABASE_URL: com ele apontando para o Supabase, o usuario e
+ * criado direto no banco de producao.
+ *
  * A senha nunca e gravada em texto puro: e guardada com scrypt.
  */
 import readline from 'node:readline/promises';
@@ -44,7 +47,7 @@ async function ask(question, { hidden = false } = {}) {
 }
 
 async function main() {
-  migrate();
+  await migrate();
 
   const [argUsername, argPassword] = process.argv.slice(2);
 
@@ -62,21 +65,23 @@ async function main() {
     return;
   }
 
-  const existing = findAdminByUsername(username);
+  const existing = await findAdminByUsername(username);
   if (existing) {
-    updateAdminPassword(existing.id, password);
+    await updateAdminPassword(existing.id, password);
     console.log(`Senha do administrador "${username}" atualizada.`);
   } else {
-    createAdmin(username, password);
+    await createAdmin(username, password);
     console.log(`Administrador "${username}" criado.`);
   }
 
   console.log('Acesse o painel em /admin e faca login.');
 }
 
-main()
-  .catch((error) => {
-    console.error('Falha ao criar administrador:', error.message);
-    process.exitCode = 1;
-  })
-  .finally(closeDb);
+try {
+  await main();
+} catch (error) {
+  console.error('Falha ao criar administrador:', error.message);
+  process.exitCode = 1;
+} finally {
+  await closeDb();
+}

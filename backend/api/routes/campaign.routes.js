@@ -7,6 +7,7 @@ import {
   getPublicSupporters,
   getHighlight,
 } from '../../services/campaign.service.js';
+import { expireOverdue } from '../../database/repositories/donations.repo.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -15,11 +16,17 @@ const router = Router();
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json({
-      campaign: getCampaignState(),
-      supporters: getPublicSupporters(12),
-      highlight: getHighlight(),
-    });
+    // Em serverless nao existe timer de fundo: aproveitamos a leitura mais
+    // frequente da pagina para expirar as cobrancas vencidas (1 UPDATE barato).
+    await expireOverdue().catch(() => {});
+
+    const [campaign, supporters, highlight] = await Promise.all([
+      getCampaignState(),
+      getPublicSupporters(12),
+      getHighlight(),
+    ]);
+
+    res.json({ campaign, supporters, highlight });
   })
 );
 
@@ -28,7 +35,7 @@ router.get(
   '/supporters',
   asyncHandler(async (req, res) => {
     const limit = Number.parseInt(req.query.limit, 10) || 20;
-    res.json({ supporters: getPublicSupporters(limit) });
+    res.json({ supporters: await getPublicSupporters(limit) });
   })
 );
 

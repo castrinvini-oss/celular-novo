@@ -12,6 +12,9 @@ import {
   touchLogin,
   updateAdminPassword,
   countAdmins,
+  countLoginAttempts,
+  recordLoginAttempt,
+  clearLoginAttempts,
 } from '../../database/repositories/admin.repo.js';
 import { listForAdmin } from '../../database/repositories/donations.repo.js';
 import { getAllSettings } from '../../database/repositories/settings.repo.js';
@@ -26,12 +29,15 @@ import {
 } from '../middleware/auth.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
-import { AppError, UnauthorizedError, ValidationError } from '../../utils/errors.js';
+import { AppError, TooManyRequestsError, UnauthorizedError, ValidationError } from '../../utils/errors.js';
 import { cleanText } from '../../utils/sanitize.js';
 import logger from '../../utils/logger.js';
 
 const router = Router();
 const VALID_STATUSES = ['ALL', 'PENDING', 'PAID', 'EXPIRED', 'CANCELLED', 'FAILED'];
+
+/** Teto de tentativas de login por IP em 15 minutos (gravado no banco). */
+const MAX_LOGIN_ATTEMPTS = 10;
 
 /** POST /api/admin/login */
 router.post(
@@ -40,28 +46,38 @@ router.post(
   asyncHandler(async (req, res) => {
     const username = cleanText(req.body?.username, 60).toLowerCase();
     const password = String(req.body?.password ?? '');
+    const ip = req.ip ?? '';
 
     if (!username || !password) {
       throw new ValidationError('Informe usuario e senha.');
     }
 
-    if (countAdmins() === 0) {
+    // Rate limit persistente: o limitador em memoria nao sobrevive a serverless.
+    if ((await countLoginAttempts(ip, 15)) >= MAX_LOGIN_ATTEMPTS) {
+      throw new TooManyRequestsError(
+        'Muitas tentativas de login. Tente novamente em alguns minutos.'
+      );
+    }
+
+    if ((await countAdmins()) === 0) {
       throw new AppError(
         'Nenhum administrador cadastrado. Rode "npm run create-admin" no servidor.',
         { statusCode: 503, code: 'NO_ADMIN' }
       );
     }
 
-    const admin = findAdminByUsername(username);
+    const admin = await findAdminByUsername(username);
     // Mensagem identica para usuario inexistente e senha errada (evita
     // descobrir quais usuarios existem).
     if (!admin || !verifyPassword(password, admin.password_hash)) {
-      logger.warn('Tentativa de login invalida', { ip: req.ip });
+      await recordLoginAttempt(ip, username);
+      logger.warn('Tentativa de login invalida', { ip });
       throw new UnauthorizedError('Usuario ou senha incorretos.');
     }
 
-    const sessionId = createSession(admin.id, sessionTtlHours());
-    touchLogin(admin.id);
+    const sessionId = await createSession(admin.id, sessionTtlHours());
+    await touchLogin(admin.id);
+    await clearLoginAttempts(ip);
     setSessionCookie(res, sessionId);
 
     res.json({ ok: true, admin: { username: admin.username } });
@@ -73,7 +89,7 @@ router.post(
   '/logout',
   asyncHandler(async (req, res) => {
     const sessionId = readSessionId(req);
-    if (sessionId) destroySession(sessionId);
+    if (sessionId) await destroySession(sessionId);
     clearSessionCookie(res);
     res.json({ ok: true });
   })
@@ -93,7 +109,7 @@ router.get('/me', (req, res) => {
 router.get(
   '/overview',
   asyncHandler(async (req, res) => {
-    res.json(getAdminOverview());
+    res.json(await getAdminOverview());
   })
 );
 
@@ -107,7 +123,7 @@ router.get(
     }
 
     res.json(
-      listForAdmin({
+      await listForAdmin({
         status,
         page: req.query.page,
         perPage: req.query.perPage,
@@ -122,13 +138,14 @@ router.get(
   '/donations.csv',
   asyncHandler(async (req, res) => {
     const status = String(req.query.status ?? 'ALL').toUpperCase();
-    const { items } = listForAdmin({
+    const { items } = await listForAdmin({
       status: VALID_STATUSES.includes(status) ? status : 'ALL',
       page: 1,
       perPage: 200,
     });
 
-    const header = 'id;nome_publico;nome_pagador;valor_centavos;status;transaction_id;criado_em;pago_em';
+    const header =
+      'id;nome_publico;nome_pagador;valor_centavos;status;transaction_id;criado_em;pago_em';
     const escape = (value) => String(value ?? '').replace(/[;\n\r"]/g, ' ');
     const lines = items.map((item) =>
       [
@@ -153,8 +170,7 @@ router.get(
 router.post(
   '/donations/:transactionId/recheck',
   asyncHandler(async (req, res) => {
-    const result = await getDonationStatus(req.params.transactionId, { force: true });
-    res.json(result);
+    res.json(await getDonationStatus(req.params.transactionId, { force: true }));
   })
 );
 
@@ -170,7 +186,7 @@ router.post(
 router.get(
   '/settings',
   asyncHandler(async (req, res) => {
-    res.json({ settings: getAllSettings() });
+    res.json({ settings: await getAllSettings() });
   })
 );
 
@@ -178,7 +194,7 @@ router.get(
 router.put(
   '/settings',
   asyncHandler(async (req, res) => {
-    const result = updateCampaignSettings(req.body ?? {});
+    const result = await updateCampaignSettings(req.body ?? {});
     if (!result.updated.length) {
       throw new ValidationError('Nenhum campo valido foi enviado.', result);
     }
@@ -186,7 +202,7 @@ router.put(
       admin: req.admin.username,
       fields: result.updated,
     });
-    res.json({ ok: true, ...result, settings: getAllSettings() });
+    res.json({ ok: true, ...result, settings: await getAllSettings() });
   })
 );
 
@@ -201,12 +217,12 @@ router.post(
       throw new ValidationError('A nova senha precisa ter pelo menos 8 caracteres.');
     }
 
-    const admin = findAdminByUsername(req.admin.username);
+    const admin = await findAdminByUsername(req.admin.username);
     if (!admin || !verifyPassword(currentPassword, admin.password_hash)) {
       throw new UnauthorizedError('Senha atual incorreta.');
     }
 
-    updateAdminPassword(admin.id, newPassword);
+    await updateAdminPassword(admin.id, newPassword);
     res.json({ ok: true });
   })
 );

@@ -38,19 +38,27 @@ function parseQuickAmounts(raw) {
 }
 
 /** Limites vigentes da doacao (settings, com teto/piso absolutos). */
-export function getDonationLimits() {
-  const settings = getAllSettings();
+export async function getDonationLimits() {
+  const settings = await getAllSettings();
   const min = Math.max(MIN_ABSOLUTE_CENTS, toInt(settings.min_cents, config.campaign.minCents));
   const max = Math.min(MAX_ABSOLUTE_CENTS, toInt(settings.max_cents, config.campaign.maxCents));
   return { minCents: min, maxCents: Math.max(min, max) };
 }
 
 /** Estado completo da campanha (usado pela home e pelo painel). */
-export function getCampaignState() {
-  const settings = getAllSettings();
-  const { raisedCents, supporters } = getTotals();
+export async function getCampaignState() {
+  const settings = await getAllSettings();
+  const { raisedCents, supporters } = await getTotals();
+
   const goalCents = Math.max(1, toInt(settings.goal_cents, config.campaign.goalCents));
-  const { minCents, maxCents } = getDonationLimits();
+  const minCents = Math.max(
+    MIN_ABSOLUTE_CENTS,
+    toInt(settings.min_cents, config.campaign.minCents)
+  );
+  const maxCents = Math.max(
+    minCents,
+    Math.min(MAX_ABSOLUTE_CENTS, toInt(settings.max_cents, config.campaign.maxCents))
+  );
 
   const percent = progressPercent(raisedCents, goalCents);
   const remainingCents = Math.max(0, goalCents - raisedCents);
@@ -83,8 +91,9 @@ export function getCampaignState() {
 }
 
 /** Apoiadores para a vitrine publica - sem nenhum dado sensivel. */
-export function getPublicSupporters(limit = 20) {
-  return listRecentPaid(limit).map((item) => ({
+export async function getPublicSupporters(limit = 20) {
+  const rows = await listRecentPaid(limit);
+  return rows.map((item) => ({
     name: item.name ? publicDisplayName(item.name) : null,
     amount: Number(item.amount),
     message: item.message ? cleanText(item.message, 140) : null,
@@ -92,8 +101,8 @@ export function getPublicSupporters(limit = 20) {
   }));
 }
 
-export function getHighlight() {
-  const top = getTopDonation();
+export async function getHighlight() {
+  const top = await getTopDonation();
   if (!top) return null;
   return {
     name: top.name ? publicDisplayName(top.name) : null,
@@ -103,9 +112,9 @@ export function getHighlight() {
 }
 
 /** Numeros do painel administrativo. */
-export function getAdminOverview() {
-  const campaign = getCampaignState();
-  return { campaign, counts: countByStatus() };
+export async function getAdminOverview() {
+  const [campaign, counts] = await Promise.all([getCampaignState(), countByStatus()]);
+  return { campaign, counts };
 }
 
 /** Campos que o painel pode alterar, com o saneamento de cada um. */
@@ -148,7 +157,7 @@ const SETTING_SANITIZERS = {
  * Atualiza as configuracoes da campanha.
  * Retorna { updated: string[], rejected: string[] }.
  */
-export function updateCampaignSettings(payload) {
+export async function updateCampaignSettings(payload) {
   const updates = {};
   const rejected = [];
 
@@ -175,7 +184,7 @@ export function updateCampaignSettings(payload) {
     }
   }
 
-  if (Object.keys(updates).length) setSettings(updates);
+  if (Object.keys(updates).length) await setSettings(updates);
 
   return { updated: Object.keys(updates), rejected };
 }

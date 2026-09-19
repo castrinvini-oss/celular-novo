@@ -198,7 +198,8 @@
 
               <div class="amounts" data-el="quickAmounts" role="group" aria-label="Valores rápidos"></div>
 
-              <form data-el="donationForm" novalidate>
+              <!-- method="post": se o JS falhar, o submit nativo nunca leva CPF na URL -->
+              <form data-el="donationForm" method="post" action="/api/donations" novalidate>
                 <label class="field">
                   <span class="field__label">Ou escolha outro valor</span>
                   <input

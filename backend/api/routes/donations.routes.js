@@ -16,7 +16,7 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
 
-/** IP real do cliente (respeita TRUST_PROXY configurado no server). */
+/** IP real do cliente (respeita TRUST_PROXY configurado no app). */
 function clientIp(req) {
   return req.ip || req.socket?.remoteAddress || null;
 }
@@ -28,7 +28,7 @@ router.post(
     const donation = await createPixDonation(req.body ?? {}, { clientIp: clientIp(req) });
     res.status(201).json({
       donation: toPublicDonation(donation),
-      campaign: getCampaignState(),
+      campaign: await getCampaignState(),
     });
   })
 );
@@ -37,8 +37,7 @@ router.get(
   '/:transactionId/status',
   statusLimiter,
   asyncHandler(async (req, res) => {
-    const result = await getDonationStatus(req.params.transactionId);
-    res.json(result);
+    res.json(await getDonationStatus(req.params.transactionId));
   })
 );
 

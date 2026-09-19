@@ -19,7 +19,7 @@ import { getDonationLimits, getCampaignState } from './campaign.service.js';
 import { parseAmountToCents, formatBRL } from '../utils/money.js';
 import { isValidCPF, maskCPF, onlyDigits } from '../utils/cpf.js';
 import { cleanText } from '../utils/sanitize.js';
-import { parseSqlDatetime, sqlDatetimeIn } from '../utils/dates.js';
+import { parseSqlDatetime } from '../utils/dates.js';
 import { NotFoundError, TooManyRequestsError, ValidationError } from '../utils/errors.js';
 import logger from '../utils/logger.js';
 
@@ -34,8 +34,8 @@ function newTransactionId() {
 }
 
 /** Valida e normaliza tudo que veio do navegador. */
-export function validateDonationInput(input = {}) {
-  const { minCents, maxCents } = getDonationLimits();
+export async function validateDonationInput(input = {}) {
+  const { minCents, maxCents } = await getDonationLimits();
 
   const amountCents = parseAmountToCents(input.amount);
   if (amountCents === null) {
@@ -76,7 +76,7 @@ export function validateDonationInput(input = {}) {
 
 /** Cria a cobranca Pix e grava a doacao como PENDING. */
 export async function createPixDonation(rawInput, { clientIp = null } = {}) {
-  const input = validateDonationInput(rawInput);
+  const input = await validateDonationInput(rawInput);
   const gateway = getGateway();
 
   if (!gateway.isConfigured()) {
@@ -85,14 +85,14 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
     );
   }
 
-  if (clientIp && donationsRepo.countRecentByIp(clientIp, 60) >= MAX_CHARGES_PER_IP_PER_HOUR) {
+  if (clientIp && (await donationsRepo.countRecentByIp(clientIp, 60)) >= MAX_CHARGES_PER_IP_PER_HOUR) {
     throw new TooManyRequestsError(
       'Voce gerou muitos Pix seguidos. Aguarde alguns minutos antes de tentar de novo.'
     );
   }
 
   const transactionId = newTransactionId();
-  const campaign = getCampaignState();
+  const campaign = await getCampaignState();
 
   const charge = await gateway.createPixCharge({
     amountCents: input.amountCents,
@@ -103,9 +103,7 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
     webhookUrl: resolveWebhookUrl(),
   });
 
-  const expiresAt = sqlDatetimeIn(config.campaign.pixExpirationMinutes);
-
-  const donation = donationsRepo.createDonation({
+  const donation = await donationsRepo.createDonation({
     transactionId,
     gatewayTransactionId: charge.gatewayTransactionId,
     gateway: gateway.name,
@@ -118,7 +116,7 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
     pixQrCodeBase64: charge.qrCodeBase64,
     pixQrCodeUrl: charge.qrCodeUrl,
     clientIp,
-    expiresAt,
+    expiresInMinutes: config.campaign.pixExpirationMinutes,
   });
 
   logger.info('Cobranca Pix criada', {
@@ -152,7 +150,7 @@ export function toPublicDonation(donation) {
 
 /**
  * Confirma a doacao consultando a MisticPay. E o UNICO caminho que grava PAID.
- * @returns {{ status: string, changed: boolean }}
+ * @returns {Promise<{ status: string, changed: boolean }>}
  */
 async function confirmWithGateway(donation, { source = 'polling', rawPayload = null } = {}) {
   const gateway = getGateway();
@@ -168,7 +166,7 @@ async function confirmWithGateway(donation, { source = 'polling', rawPayload = n
 
   if (result.status === STATUS.PAID) {
     const mismatch = result.amountCents === null;
-    const changed = donationsRepo.markAsPaid(donation.id, {
+    const changed = await donationsRepo.markAsPaid(donation.id, {
       paidAmount: result.amountCents,
       mismatch,
       raw: JSON.stringify({ source, gateway: result.raw }),
@@ -192,11 +190,11 @@ async function confirmWithGateway(donation, { source = 'polling', rawPayload = n
   }
 
   if (result.status !== STATUS.PENDING) {
-    const changed = donationsRepo.updateStatus(donation.id, result.status);
+    const changed = await donationsRepo.updateStatus(donation.id, result.status);
     return { status: result.status, changed };
   }
 
-  donationsRepo.touchChecked(donation.id);
+  await donationsRepo.touchChecked(donation.id);
   if (rawPayload) {
     logger.debug('Webhook recebido mas gateway ainda reporta pendente', {
       transactionId: donation.transaction_id,
@@ -210,7 +208,7 @@ async function confirmWithGateway(donation, { source = 'polling', rawPayload = n
  * Consulta a MisticPay no maximo 1x a cada CHECK_THROTTLE_MS por doacao.
  */
 export async function getDonationStatus(transactionId, { force = false } = {}) {
-  const donation = donationsRepo.findByTransactionId(transactionId);
+  const donation = await donationsRepo.findByTransactionId(transactionId);
   if (!donation) throw new NotFoundError('Doacao nao encontrada.');
 
   if (donation.status === STATUS.PENDING) {
@@ -218,7 +216,7 @@ export async function getDonationStatus(transactionId, { force = false } = {}) {
     const expired = expiresAt && expiresAt.getTime() < Date.now();
 
     if (expired) {
-      donationsRepo.updateStatus(donation.id, STATUS.EXPIRED);
+      await donationsRepo.updateStatus(donation.id, STATUS.EXPIRED);
     } else {
       const lastCheck = parseSqlDatetime(donation.last_checked_at);
       const elapsed = lastCheck ? Date.now() - lastCheck.getTime() : Infinity;
@@ -237,11 +235,12 @@ export async function getDonationStatus(transactionId, { force = false } = {}) {
     }
   }
 
-  const fresh = donationsRepo.findByTransactionId(transactionId);
-  return {
-    donation: toPublicDonation(fresh),
-    campaign: getCampaignState(),
-  };
+  const [fresh, campaign] = await Promise.all([
+    donationsRepo.findByTransactionId(transactionId),
+    getCampaignState(),
+  ]);
+
+  return { donation: toPublicDonation(fresh), campaign };
 }
 
 /**
@@ -255,7 +254,7 @@ export async function processWebhookEvent(body) {
   const event = gateway.parseWebhook(body);
 
   if (!event || !event.gatewayTransactionId) {
-    donationsRepo.recordGatewayEvent({
+    await donationsRepo.recordGatewayEvent({
       eventType: 'DESCONHECIDO',
       gatewayTransactionId: null,
       donationId: null,
@@ -266,10 +265,10 @@ export async function processWebhookEvent(body) {
     return { handled: false, reason: 'payload sem transactionId' };
   }
 
-  const donation = donationsRepo.findByAnyTransactionId(event.gatewayTransactionId);
+  const donation = await donationsRepo.findByAnyTransactionId(event.gatewayTransactionId);
 
   if (!donation) {
-    donationsRepo.recordGatewayEvent({
+    await donationsRepo.recordGatewayEvent({
       eventType: event.eventType,
       gatewayTransactionId: event.gatewayTransactionId,
       donationId: null,
@@ -281,7 +280,7 @@ export async function processWebhookEvent(body) {
   }
 
   if (event.eventType === 'INFRACTION') {
-    donationsRepo.recordGatewayEvent({
+    await donationsRepo.recordGatewayEvent({
       eventType: 'INFRACTION',
       gatewayTransactionId: event.gatewayTransactionId,
       donationId: donation.id,
@@ -311,7 +310,7 @@ export async function processWebhookEvent(body) {
     });
   }
 
-  donationsRepo.recordGatewayEvent({
+  await donationsRepo.recordGatewayEvent({
     eventType: event.eventType,
     gatewayTransactionId: event.gatewayTransactionId,
     donationId: donation.id,
@@ -328,13 +327,13 @@ export async function processWebhookEvent(body) {
  * Funciona como rede de seguranca caso um webhook se perca.
  */
 export async function reconcilePendingDonations({ limit = 10 } = {}) {
-  const expired = donationsRepo.expireOverdue();
-  const pending = donationsRepo.listPendingToReconcile(limit);
+  const expired = await donationsRepo.expireOverdue();
+  const pending = await donationsRepo.listPendingToReconcile(limit);
 
   let confirmed = 0;
   for (const item of pending) {
     try {
-      const donation = donationsRepo.findByTransactionId(item.transaction_id);
+      const donation = await donationsRepo.findByTransactionId(item.transaction_id);
       if (!donation) continue;
       const outcome = await confirmWithGateway(donation, { source: 'reconciliacao' });
       if (outcome.changed && outcome.status === STATUS.PAID) confirmed += 1;

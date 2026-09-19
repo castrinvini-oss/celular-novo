@@ -24,7 +24,8 @@
   <body>
     <!-- ============================== Login ============================== -->
     <section class="login" data-view="login">
-      <form class="card login__card" data-el="loginForm">
+      <!-- method="post": se o JS falhar, a senha nunca vai parar na URL -->
+      <form class="card login__card" data-el="loginForm" method="post" action="/api/admin/login">
         <div class="login__mark" aria-hidden="true">⚙️</div>
         <h1 style="font-size: 1.5rem">Painel da campanha</h1>
         <p class="muted" style="font-size: 0.9rem">
@@ -154,7 +155,7 @@
 
       <!-- ----------------------- Aba: configurações --------------------- -->
       <section data-pane="settings" class="hidden">
-        <form class="card" data-el="settingsForm">
+        <form class="card" data-el="settingsForm" method="post">
           <h2 class="section-title">Campanha</h2>
           <div class="settings-grid settings-grid--2">
             <label class="field">
@@ -242,7 +243,7 @@
 
       <!-- -------------------------- Aba: conta -------------------------- -->
       <section data-pane="account" class="hidden">
-        <form class="card" data-el="passwordForm" style="max-width: 460px">
+        <form class="card" data-el="passwordForm" method="post" action="/api/admin/password" style="max-width: 460px">
           <h2 class="section-title">Trocar senha</h2>
           <label class="field">
             <span class="field__label">Senha atual</span>

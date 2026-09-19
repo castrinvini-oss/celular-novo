@@ -76,9 +76,9 @@ export function readSessionId(req) {
 }
 
 /** Middleware: exige um administrador autenticado. */
-export function requireAdmin(req, res, next) {
+export async function requireAdmin(req, res, next) {
   const sessionId = readSessionId(req);
-  const session = sessionId ? findSession(sessionId) : null;
+  const session = sessionId ? await findSession(sessionId) : null;
 
   if (!session) {
     next(new UnauthorizedError('Sessao expirada ou invalida. Faca login novamente.'));
@@ -90,9 +90,9 @@ export function requireAdmin(req, res, next) {
 }
 
 /** Middleware: apenas anexa o admin, sem bloquear. */
-export function attachAdmin(req, res, next) {
+export async function attachAdmin(req, res, next) {
   const sessionId = readSessionId(req);
-  const session = sessionId ? findSession(sessionId) : null;
+  const session = sessionId ? await findSession(sessionId) : null;
   if (session) req.admin = { id: session.admin_id, username: session.username, sessionId };
   next();
 }
