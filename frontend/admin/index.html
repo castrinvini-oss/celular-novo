@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#08070f" />
+    <title>Painel · Celular Novo</title>
+
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+  </head>
+
+  <body>
+    <!-- ============================== Login ============================== -->
+    <section class="login" data-view="login">
+      <form class="card login__card" data-el="loginForm">
+        <div class="login__mark" aria-hidden="true">⚙️</div>
+        <h1 style="font-size: 1.5rem">Painel da campanha</h1>
+        <p class="muted" style="font-size: 0.9rem">
+          Acesso restrito ao responsável pela arrecadação.
+        </p>
+
+        <label class="field">
+          <span class="field__label">Usuário</span>
+          <input class="input" data-el="username" name="username" autocomplete="username" required />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Senha</span>
+          <input
+            class="input"
+            data-el="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </label>
+
+        <button class="btn btn--primary btn--block btn--lg" type="submit">Entrar</button>
+        <p class="field-error" data-el="loginError" style="margin-top: 12px"></p>
+        <p class="muted" style="font-size: 0.8rem; margin-top: 10px">
+          Sem usuário ainda? Rode <code>npm run create-admin</code> no servidor.
+        </p>
+      </form>
+    </section>
+
+    <!-- ============================ Dashboard ============================ -->
+    <main class="admin-shell hidden" data-view="dashboard">
+      <header class="admin-header">
+        <div>
+          <h1>Painel da campanha</h1>
+          <span class="admin-header__meta">
+            Logado como <strong data-bind="adminUser">—</strong>
+          </span>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <a class="btn btn--sm btn--ghost" href="/" target="_blank" rel="noopener">Ver página ↗</a>
+          <button class="btn btn--sm" type="button" data-action="logout">Sair</button>
+        </div>
+      </header>
+
+      <!-- KPIs -->
+      <div class="kpis">
+        <div class="kpi kpi--goal">
+          <span class="kpi__label">🎯 Meta</span>
+          <span class="kpi__value" data-bind="kpiGoal">—</span>
+        </div>
+        <div class="kpi kpi--raised">
+          <span class="kpi__label">💰 Arrecadado</span>
+          <span class="kpi__value" data-bind="kpiRaised">—</span>
+        </div>
+        <div class="kpi kpi--supporters">
+          <span class="kpi__label">❤️ Apoiadores</span>
+          <span class="kpi__value" data-bind="kpiSupporters">—</span>
+        </div>
+        <div class="kpi kpi--percent">
+          <span class="kpi__label">📊 Progresso</span>
+          <span class="kpi__value" data-bind="kpiPercent">—</span>
+        </div>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab is-active" type="button" data-tab="donations">Doações</button>
+        <button class="tab" type="button" data-tab="settings">Configurações</button>
+        <button class="tab" type="button" data-tab="account">Conta</button>
+      </nav>
+
+      <!-- ------------------------- Aba: doações ------------------------- -->
+      <section data-pane="donations">
+        <div class="card">
+          <div class="filters">
+            <button class="chip is-active" type="button" data-filter="ALL">Todas</button>
+            <button class="chip" type="button" data-filter="PAID">Pagas</button>
+            <button class="chip" type="button" data-filter="PENDING">Pendentes</button>
+            <button class="chip" type="button" data-filter="CANCELLED">Canceladas</button>
+            <button class="chip" type="button" data-filter="FAILED">Falhas</button>
+            <button class="chip" type="button" data-filter="EXPIRED">Expiradas</button>
+            <input
+              class="input"
+              data-el="search"
+              type="search"
+              placeholder="Buscar por nome ou ID..."
+            />
+            <button class="btn btn--sm" type="button" data-action="reconcile">
+              🔄 Reconferir pendentes
+            </button>
+            <a class="btn btn--sm btn--ghost" data-el="csvLink" href="/api/admin/donations.csv">
+              ⬇️ CSV
+            </a>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Transaction ID</th>
+                  <th>Criada em</th>
+                  <th>Paga em</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody data-el="donationsBody">
+                <tr>
+                  <td colspan="7" class="muted" style="text-align: center; padding: 28px">
+                    Carregando...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination">
+            <button class="btn btn--sm btn--ghost" type="button" data-action="prev-page">←</button>
+            <span data-bind="pageInfo">—</span>
+            <button class="btn btn--sm btn--ghost" type="button" data-action="next-page">→</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ----------------------- Aba: configurações --------------------- -->
+      <section data-pane="settings" class="hidden">
+        <form class="card" data-el="settingsForm">
+          <h2 class="section-title">Campanha</h2>
+          <div class="settings-grid settings-grid--2">
+            <label class="field">
+              <span class="field__label">Nome do projeto</span>
+              <input class="input" name="project_name" maxlength="60" />
+            </label>
+            <label class="field">
+              <span class="field__label">Meta (R$)</span>
+              <input class="input" name="goal_reais" inputmode="decimal" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field__label">Título</span>
+            <input class="input" name="campaign_title" maxlength="120" />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Descrição curta</span>
+            <input class="input" name="campaign_description" maxlength="300" />
+          </label>
+
+          <label class="field">
+            <span class="field__label">Texto da campanha</span>
+            <textarea class="input" name="campaign_text" maxlength="4000"></textarea>
+            <small class="field__hint">Separe os parágrafos com uma linha em branco.</small>
+          </label>
+
+          <h2 class="section-title" style="margin-top: 24px">Celular</h2>
+          <div class="settings-grid settings-grid--2">
+            <label class="field">
+              <span class="field__label">Nome do aparelho</span>
+              <input class="input" name="device_name" maxlength="120" />
+            </label>
+            <label class="field">
+              <span class="field__label">Imagem (URL ou caminho)</span>
+              <input class="input" name="campaign_image" maxlength="500" />
+              <small class="field__hint">
+                Ex.: /assets/img/galaxy-a36.svg ou https://site.com/foto.jpg
+              </small>
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field__label">Texto do celular</span>
+            <textarea class="input" name="device_text" maxlength="600" style="min-height: 90px"></textarea>
+          </label>
+
+          <h2 class="section-title" style="margin-top: 24px">Doações</h2>
+          <div class="settings-grid settings-grid--2">
+            <label class="field">
+              <span class="field__label">Valor mínimo (R$)</span>
+              <input class="input" name="min_reais" inputmode="decimal" />
+            </label>
+            <label class="field">
+              <span class="field__label">Valor máximo (R$)</span>
+              <input class="input" name="max_reais" inputmode="decimal" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field__label">Valores rápidos (R$, separados por ponto e vírgula)</span>
+            <input class="input" name="quick_reais" placeholder="1; 5; 10; 20; 50; 100; 200; 500; 1000" />
+            <small class="field__hint">Aceita centavos: 2,50; 7,90 — até 12 valores.</small>
+          </label>
+
+          <h2 class="section-title" style="margin-top: 24px">Meta atingida</h2>
+          <div class="settings-grid settings-grid--2">
+            <label class="field">
+              <span class="field__label">Título</span>
+              <input class="input" name="goal_reached_title" maxlength="120" />
+            </label>
+            <label class="field">
+              <span class="field__label">Texto</span>
+              <input class="input" name="goal_reached_text" maxlength="300" />
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn--primary" type="submit">Salvar configurações</button>
+            <button class="btn btn--ghost" type="button" data-action="reload-settings">Desfazer</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- -------------------------- Aba: conta -------------------------- -->
+      <section data-pane="account" class="hidden">
+        <form class="card" data-el="passwordForm" style="max-width: 460px">
+          <h2 class="section-title">Trocar senha</h2>
+          <label class="field">
+            <span class="field__label">Senha atual</span>
+            <input class="input" name="currentPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <label class="field">
+            <span class="field__label">Nova senha (mínimo 8 caracteres)</span>
+            <input class="input" name="newPassword" type="password" autocomplete="new-password" required />
+          </label>
+          <button class="btn btn--primary" type="submit">Salvar nova senha</button>
+        </form>
+      </section>
+    </main>
+
+    <div class="toast" data-el="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/assets/js/admin.js"></script>
+  </body>
+</html>

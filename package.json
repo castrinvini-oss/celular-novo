@@ -1,0 +1,21 @@
+{
+  "name": "celular-novo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma de doacoes via Pix (MisticPay) para a campanha do Samsung Galaxy A36 5G 256GB",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env backend/server.js",
+    "dev": "node --env-file-if-exists=.env --watch backend/server.js",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
+    "check-gateway": "node --env-file-if-exists=.env scripts/check-gateway.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0"
+  }
+}

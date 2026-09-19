@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 620" role="img"
+     aria-label="Ilustracao do Samsung Galaxy A36 5G 256GB: frente e verso do aparelho">
+  <title>Samsung Galaxy A36 5G 256GB</title>
+
+  <defs>
+    <!-- Corpo do aparelho -->
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#4b4b60"/>
+      <stop offset="35%"  stop-color="#23232f"/>
+      <stop offset="70%"  stop-color="#171722"/>
+      <stop offset="100%" stop-color="#32324a"/>
+    </linearGradient>
+
+    <linearGradient id="bodyBack" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#3d3d55"/>
+      <stop offset="45%"  stop-color="#1c1c29"/>
+      <stop offset="100%" stop-color="#2a2a3d"/>
+    </linearGradient>
+
+    <!-- Laterais metalicas -->
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#8d8da8"/>
+      <stop offset="18%"  stop-color="#3a3a4d"/>
+      <stop offset="82%"  stop-color="#3a3a4d"/>
+      <stop offset="100%" stop-color="#9c9cba"/>
+    </linearGradient>
+
+    <!-- Papel de parede da tela -->
+    <linearGradient id="wallpaper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#7c3aed"/>
+      <stop offset="45%"  stop-color="#c026d3"/>
+      <stop offset="100%" stop-color="#f43f5e"/>
+    </linearGradient>
+
+    <radialGradient id="wallGlow" cx="28%" cy="18%" r="85%">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="55%"  stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </radialGradient>
+
+    <!-- Reflexo do vidro -->
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="42%"  stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <radialGradient id="lens" cx="35%" cy="30%" r="75%">
+      <stop offset="0%"   stop-color="#5b6bb5"/>
+      <stop offset="40%"  stop-color="#12121c"/>
+      <stop offset="100%" stop-color="#05050a"/>
+    </radialGradient>
+
+    <radialGradient id="floor" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#7c3aed" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softShadow" x="-40%" y="-25%" width="180%" height="170%">
+      <feDropShadow dx="0" dy="26" stdDeviation="26" flood-color="#05020f" flood-opacity="0.55"/>
+    </filter>
+
+    <clipPath id="screenClip">
+      <rect x="10" y="10" width="186" height="386" rx="24"/>
+    </clipPath>
+  </defs>
+
+  <!-- Brilho de fundo -->
+  <ellipse cx="320" cy="330" rx="290" ry="250" fill="url(#floor)"/>
+  <ellipse cx="322" cy="548" rx="180" ry="20" fill="#2a1055" opacity="0.28" filter="url(#softShadow)"/>
+
+  <!-- ============================ VERSO ============================ -->
+  <g transform="translate(96 78) rotate(-9 103 208)" filter="url(#softShadow)">
+    <rect x="-3" y="-3" width="212" height="422" rx="32" fill="url(#frame)"/>
+    <rect x="0" y="0" width="206" height="416" rx="30" fill="url(#bodyBack)"/>
+
+    <!-- Modulo de cameras (tres lentes verticais + flash) -->
+    <g transform="translate(26 26)">
+      <rect x="-4" y="-4" width="60" height="150" rx="26" fill="#0f0f18" opacity="0.55"/>
+      <g>
+        <circle cx="26" cy="26"  r="19" fill="#0a0a12"/>
+        <circle cx="26" cy="26"  r="15" fill="url(#lens)"/>
+        <circle cx="21" cy="20"  r="4.5" fill="#8ea2ff" opacity="0.65"/>
+
+        <circle cx="26" cy="71"  r="19" fill="#0a0a12"/>
+        <circle cx="26" cy="71"  r="15" fill="url(#lens)"/>
+        <circle cx="21" cy="65"  r="4.5" fill="#8ea2ff" opacity="0.55"/>
+
+        <circle cx="26" cy="116" r="15" fill="#0a0a12"/>
+        <circle cx="26" cy="116" r="11.5" fill="url(#lens)"/>
+        <circle cx="22" cy="111" r="3.5" fill="#8ea2ff" opacity="0.5"/>
+      </g>
+      <rect x="18" y="140" width="16" height="9" rx="4.5" fill="#f5d67b" opacity="0.9"/>
+    </g>
+
+    <!-- Reflexo diagonal do vidro traseiro -->
+    <path d="M0 300 L206 96 L206 176 L0 380 Z" fill="#ffffff" opacity="0.05"/>
+    <rect x="0" y="0" width="206" height="416" rx="30" fill="url(#glass)" opacity="0.5"/>
+  </g>
+
+  <!-- ============================ FRENTE ============================ -->
+  <g transform="translate(300 62) rotate(6 103 203)" filter="url(#softShadow)">
+    <rect x="-4" y="-4" width="214" height="414" rx="32" fill="url(#frame)"/>
+    <rect x="0" y="0" width="206" height="406" rx="30" fill="url(#body)"/>
+
+    <!-- Tela -->
+    <rect x="9" y="9" width="188" height="388" rx="24" fill="#05050c"/>
+    <g clip-path="url(#screenClip)" transform="translate(-1 -1)">
+      <rect x="10" y="10" width="186" height="386" rx="24" fill="url(#wallpaper)"/>
+      <rect x="10" y="10" width="186" height="386" rx="24" fill="url(#wallGlow)"/>
+      <circle cx="46"  cy="330" r="96" fill="#ffffff" opacity="0.09"/>
+      <circle cx="176" cy="96"  r="72" fill="#ffffff" opacity="0.10"/>
+      <path d="M10 300 q52 -46 96 -6 t90 -20 v122 h-186 z" fill="#0b0518" opacity="0.28"/>
+    </g>
+
+    <!-- Camera frontal (furo na tela) -->
+    <circle cx="103" cy="30" r="7.5" fill="#05050c"/>
+    <circle cx="103" cy="30" r="5.4" fill="#121226"/>
+    <circle cx="101" cy="28" r="1.9" fill="#6f7bd6" opacity="0.8"/>
+
+    <!-- Reflexo do vidro frontal -->
+    <path d="M9 268 L197 72 L197 132 L9 330 Z" fill="#ffffff" opacity="0.07"/>
+    <rect x="9" y="9" width="188" height="388" rx="24" fill="url(#glass)" opacity="0.55"/>
+
+    <!-- Botoes laterais -->
+    <rect x="205" y="96"  width="4" height="34" rx="2" fill="#6f6f8c"/>
+    <rect x="205" y="140" width="4" height="56" rx="2" fill="#6f6f8c"/>
+  </g>
+</svg>
