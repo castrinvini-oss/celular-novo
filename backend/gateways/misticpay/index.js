@@ -66,7 +66,52 @@ export function normalizeAmountToCents(value, expectedCents = null) {
 const misticpay = {
   name: 'misticpay',
 
+  /** @returns {Promise<boolean>} */
   isConfigured,
+
+  /**
+   * Testa as credenciais sem criar cobranca nenhuma.
+   *
+   * Consulta uma transacao que sabidamente nao existe: o que interessa e o
+   * codigo HTTP. 401/403 significam credencial invalida ou sem permissao;
+   * qualquer outra resposta significa que a MisticPay aceitou a autenticacao.
+   */
+  async testConnection() {
+    if (!(await isConfigured())) {
+      return { ok: false, message: 'Nenhuma credencial cadastrada.' };
+    }
+
+    try {
+      await request(ENDPOINTS.checkTransaction, {
+        method: 'POST',
+        body: { transactionId: 'teste-de-credencial-000000' },
+        allowLegacy: true,
+      });
+      return { ok: true, message: 'Credenciais aceitas pela MisticPay.' };
+    } catch (error) {
+      const status = error?.details?.httpStatus;
+
+      if (status === 401) {
+        return { ok: false, message: 'Credenciais recusadas (401). Confira a pk_ e a sk_.' };
+      }
+      if (status === 403) {
+        return {
+          ok: false,
+          message:
+            'Credencial sem permissao (403). Crie uma chave de acesso com o escopo cashin.',
+        };
+      }
+      if (error?.statusCode === 504) {
+        return { ok: false, message: 'Nao foi possivel falar com a MisticPay (rede/timeout).' };
+      }
+
+      // 400/404/422: autenticou, so nao achou a transacao inventada.
+      return {
+        ok: true,
+        message: 'Credenciais aceitas pela MisticPay (transacao de teste inexistente, como esperado).',
+      };
+    }
+  },
 
   /**
    * Cria a cobranca Pix.

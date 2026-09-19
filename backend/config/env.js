@@ -28,14 +28,33 @@ function int(name, fallback) {
   return Math.trunc(num(name, fallback));
 }
 
+/**
+ * Ignora valores que sao claramente o exemplo do .env.example.
+ *
+ * Sem isso, quem copia o arquivo e esquece de preencher acha que esta
+ * configurado e so descobre o contrario quando a MisticPay devolve 401.
+ */
+function secret(name) {
+  const value = str(name);
+  const looksLikePlaceholder =
+    /^(pk|sk|ci|cs)_x+$/i.test(value) ||
+    /x{6,}/i.test(value) ||
+    value.startsWith('troque-este') ||
+    value.startsWith('seu_') ||
+    value.startsWith('sua_');
+
+  return looksLikePlaceholder ? '' : value;
+}
+
 const NODE_ENV = str('NODE_ENV', 'development');
 const isProduction = NODE_ENV === 'production';
 
 /** Segredo de sessao: em dev geramos um efemero para nao travar o primeiro run. */
+let sessionSecretIsEphemeral = false;
+
 function resolveSessionSecret() {
   const value = str('SESSION_SECRET');
-  const isPlaceholder =
-    value === '' || value.startsWith('troque-este') || value.length < 24;
+  const isPlaceholder = value === '' || value.startsWith('troque-este') || value.length < 24;
 
   if (!isPlaceholder) return value;
 
@@ -44,6 +63,10 @@ function resolveSessionSecret() {
       'SESSION_SECRET ausente ou fraco. Defina um valor aleatorio com pelo menos 24 caracteres antes de subir em producao.'
     );
   }
+
+  // Sem SESSION_SECRET fixo nao da para guardar credenciais cifradas: a chave
+  // muda a cada boot e o que foi salvo antes vira lixo.
+  sessionSecretIsEphemeral = true;
   return crypto.randomBytes(48).toString('hex');
 }
 
@@ -67,7 +90,7 @@ const config = {
   databasePoolMax: int('DATABASE_POOL_MAX', 3),
 
   /** Segredo do cron de reconciliacao (usado em serverless). */
-  cronSecret: str('CRON_SECRET'),
+  cronSecret: secret('CRON_SECRET'),
 
   campaign: {
     /** Meta inicial da campanha, em centavos. Pode ser alterada no /admin. */
@@ -82,23 +105,29 @@ const config = {
     provider: str('PAYMENT_GATEWAY', 'misticpay').toLowerCase(),
     misticpay: {
       apiUrl: str('MISTICPAY_API_URL', 'https://api.misticpay.com').replace(/\/+$/, ''),
-      publicKey: str('MISTICPAY_PUBLIC_KEY'),
-      secretKey: str('MISTICPAY_SECRET_KEY'),
-      clientId: str('MISTICPAY_CLIENT_ID'),
-      clientSecret: str('MISTICPAY_CLIENT_SECRET'),
+      publicKey: secret('MISTICPAY_PUBLIC_KEY'),
+      secretKey: secret('MISTICPAY_SECRET_KEY'),
+      clientId: secret('MISTICPAY_CLIENT_ID'),
+      clientSecret: secret('MISTICPAY_CLIENT_SECRET'),
       webhookUrl: str('MISTICPAY_WEBHOOK_URL'),
-      webhookToken: str('MISTICPAY_WEBHOOK_TOKEN'),
+      webhookToken: secret('MISTICPAY_WEBHOOK_TOKEN'),
       timeoutMs: int('MISTICPAY_TIMEOUT_MS', 20000),
     },
   },
 };
 
-/** URL do webhook efetivamente enviada ao gateway. */
-export function resolveWebhookUrl() {
+/** true quando o SESSION_SECRET foi gerado na hora (so acontece em dev). */
+export function isSessionSecretEphemeral() {
+  return sessionSecretIsEphemeral;
+}
+
+/**
+ * URL do webhook efetivamente enviada ao gateway.
+ * @param {string} [token] token atual (pode vir do cadastro feito no painel)
+ */
+export function resolveWebhookUrl(token = config.gateway.misticpay.webhookToken) {
   const explicit = config.gateway.misticpay.webhookUrl;
   if (explicit) return explicit;
-
-  const token = config.gateway.misticpay.webhookToken;
   if (!config.publicBaseUrl || config.publicBaseUrl.includes('localhost')) {
     // localhost nao e acessivel pela MisticPay: melhor nao mandar nada.
     return '';
@@ -117,7 +146,7 @@ export function configWarnings() {
 
   if (!hasAccessKey && !hasLegacy) {
     warnings.push(
-      'MisticPay sem credenciais: defina MISTICPAY_PUBLIC_KEY + MISTICPAY_SECRET_KEY no .env. Nenhum Pix podera ser gerado.'
+      'MisticPay sem credenciais no .env. Cadastre a chave de acesso em /admin -> Integracao, ou defina MISTICPAY_PUBLIC_KEY + MISTICPAY_SECRET_KEY.'
     );
   } else if (!hasAccessKey && hasLegacy) {
     warnings.push(
@@ -127,7 +156,7 @@ export function configWarnings() {
 
   if (!mp.webhookToken || mp.webhookToken.startsWith('troque-este')) {
     warnings.push(
-      'MISTICPAY_WEBHOOK_TOKEN nao configurado: o endpoint de webhook ficara sem protecao por token.'
+      'MISTICPAY_WEBHOOK_TOKEN nao esta no .env (pode estar cadastrado no painel). Sem token, o endpoint de webhook fica sem essa camada de protecao.'
     );
   }
 

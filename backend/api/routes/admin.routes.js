@@ -16,10 +16,20 @@ import {
   recordLoginAttempt,
   clearLoginAttempts,
 } from '../../database/repositories/admin.repo.js';
-import { listForAdmin } from '../../database/repositories/donations.repo.js';
+import { listForAdmin, getTotalsBySource } from '../../database/repositories/donations.repo.js';
 import { getAllSettings } from '../../database/repositories/settings.repo.js';
 import { getAdminOverview, updateCampaignSettings } from '../../services/campaign.service.js';
-import { getDonationStatus, reconcilePendingDonations } from '../../services/donation.service.js';
+import {
+  getDonationStatus,
+  reconcilePendingDonations,
+  registerManualDonation,
+  removeManualDonation,
+} from '../../services/donation.service.js';
+import {
+  getGatewayStatus,
+  saveGatewayCredentials,
+  testGatewayCredentials,
+} from '../../services/gateway.service.js';
 import {
   requireAdmin,
   readSessionId,
@@ -109,7 +119,8 @@ router.get('/me', (req, res) => {
 router.get(
   '/overview',
   asyncHandler(async (req, res) => {
-    res.json(await getAdminOverview());
+    const [overview, bySource] = await Promise.all([getAdminOverview(), getTotalsBySource()]);
+    res.json({ ...overview, bySource });
   })
 );
 
@@ -179,6 +190,59 @@ router.post(
   '/reconcile',
   asyncHandler(async (req, res) => {
     res.json(await reconcilePendingDonations({ limit: 25 }));
+  })
+);
+
+/**
+ * POST /api/admin/donations/manual
+ * Registra uma doacao recebida fora da plataforma (Pix direto, dinheiro...).
+ */
+router.post(
+  '/donations/manual',
+  asyncHandler(async (req, res) => {
+    const donation = await registerManualDonation(req.body ?? {}, {
+      adminUsername: req.admin.username,
+    });
+    const [overview, bySource] = await Promise.all([getAdminOverview(), getTotalsBySource()]);
+    res.status(201).json({ ok: true, donation, ...overview, bySource });
+  })
+);
+
+/** DELETE /api/admin/donations/:transactionId - apenas lancamentos manuais. */
+router.delete(
+  '/donations/:transactionId',
+  asyncHandler(async (req, res) => {
+    await removeManualDonation(req.params.transactionId, { adminUsername: req.admin.username });
+    res.json({ ok: true });
+  })
+);
+
+/* ------------------------------------------------- Integracao (gateway) */
+
+/** GET /api/admin/gateway - situacao da integracao (sem expor segredo). */
+router.get(
+  '/gateway',
+  asyncHandler(async (req, res) => {
+    res.json(await getGatewayStatus());
+  })
+);
+
+/** PUT /api/admin/gateway - cadastra/remove credenciais pelo painel. */
+router.put(
+  '/gateway',
+  asyncHandler(async (req, res) => {
+    const result = await saveGatewayCredentials(req.body ?? {}, {
+      adminUsername: req.admin.username,
+    });
+    res.json({ ok: true, ...result });
+  })
+);
+
+/** POST /api/admin/gateway/test - valida as credenciais na API da MisticPay. */
+router.post(
+  '/gateway/test',
+  asyncHandler(async (req, res) => {
+    res.json(await testGatewayCredentials());
   })
 );
 

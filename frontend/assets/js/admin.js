@@ -70,25 +70,58 @@ function showTab(name) {
 
 /* ------------------------------------------------------------- Overview */
 async function loadOverview() {
-  const { campaign } = await request('/api/admin/overview');
+  const { campaign, bySource } = await request('/api/admin/overview');
   setText('kpiGoal', formatBRL(campaign.goalCents));
   setText('kpiRaised', formatBRL(campaign.raisedCents));
   setText('kpiSupporters', String(campaign.supporters));
   setText('kpiPercent', formatPercent(campaign.percentCapped));
+
+  // Deixa explícito quanto veio confirmado pelo gateway e quanto foi lançado
+  // à mão — os dois somam o total, mas a origem nunca se mistura.
+  if (bySource) {
+    const manual = bySource.MANUAL?.cents ?? 0;
+    setText(
+      'kpiBreakdown',
+      manual > 0
+        ? `${formatBRL(bySource.GATEWAY.cents)} via Pix · ${formatBRL(manual)} manual`
+        : 'tudo confirmado via Pix'
+    );
+  }
 }
 
 /* ------------------------------------------------------------- Doações */
+/** Linha extra, discreta, embaixo do nome. */
+function detailLine(text, { title = '' } = {}) {
+  const small = document.createElement('small');
+  small.className = 'muted';
+  small.style.display = 'block';
+  small.style.fontSize = '0.76rem';
+  small.textContent = text;
+  if (title) small.title = title;
+  return small;
+}
+
 function donationRow(item) {
   const tr = document.createElement('tr');
+  const isManual = item.source === 'MANUAL';
 
+  // "Quem doou": nome público + nome do pagador, CPF mascarado e recado.
   const name = document.createElement('td');
-  name.textContent = item.name || item.payer_name || 'Anônimo';
-  if (item.name && item.payer_name && item.name !== item.payer_name) {
-    const small = document.createElement('small');
-    small.className = 'muted';
-    small.style.display = 'block';
-    small.textContent = item.payer_name;
-    name.appendChild(small);
+  const displayName = document.createElement('strong');
+  displayName.textContent = item.name || 'Apoiador anônimo';
+  name.appendChild(displayName);
+
+  if (item.payer_name && item.payer_name !== item.name) {
+    name.appendChild(detailLine(item.payer_name, { title: 'Nome informado ao banco' }));
+  }
+  if (item.payer_document_masked) {
+    name.appendChild(detailLine(`CPF ${item.payer_document_masked}`));
+  }
+  if (item.message) {
+    name.appendChild(detailLine(`💬 ${item.message}`));
+  }
+  if (item.admin_note) {
+    name.appendChild(detailLine(`📝 ${item.admin_note}`));
   }
 
   const amount = document.createElement('td');
@@ -107,6 +140,15 @@ function donationRow(item) {
   pill.className = `pill pill--${item.status}`;
   pill.textContent = item.status;
   status.appendChild(pill);
+
+  const origin = document.createElement('td');
+  const originPill = document.createElement('span');
+  originPill.className = `pill pill--${isManual ? 'EXPIRED' : 'PAID'}`;
+  originPill.textContent = isManual ? 'MANUAL' : 'PIX';
+  originPill.title = isManual
+    ? 'Lançado no painel — doação recebida fora da plataforma'
+    : 'Confirmado pela MisticPay';
+  origin.appendChild(originPill);
 
   const transaction = document.createElement('td');
   transaction.className = 'mono';
@@ -146,7 +188,30 @@ function donationRow(item) {
     actions.appendChild(button);
   }
 
-  tr.append(name, amount, status, transaction, created, paid, actions);
+  if (isManual) {
+    const remove = document.createElement('button');
+    remove.className = 'btn btn--sm btn--ghost';
+    remove.type = 'button';
+    remove.textContent = 'Remover';
+    remove.title = 'Só lançamentos manuais podem ser removidos';
+    remove.addEventListener('click', async () => {
+      if (!window.confirm(`Remover o lançamento manual de ${formatBRL(item.amount)}?`)) return;
+      remove.disabled = true;
+      try {
+        await request(`/api/admin/donations/${encodeURIComponent(item.transaction_id)}`, {
+          method: 'DELETE',
+        });
+        toast('Lançamento removido.', 'success');
+        await Promise.all([loadOverview(), loadDonations()]);
+      } catch (error) {
+        toast(error.message, 'error');
+        remove.disabled = false;
+      }
+    });
+    actions.appendChild(remove);
+  }
+
+  tr.append(name, amount, status, origin, transaction, created, paid, actions);
   return tr;
 }
 
@@ -166,7 +231,7 @@ async function loadDonations() {
       body.replaceChildren();
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 7;
+      td.colSpan = 8;
       td.className = 'muted';
       td.style.cssText = 'text-align:center;padding:28px';
       td.textContent = 'Nenhuma doação encontrada com esse filtro.';
@@ -283,13 +348,132 @@ async function saveSettings(event) {
   }
 }
 
+/* ------------------------------------------------- Doação externa (manual) */
+async function submitManualDonation(event) {
+  event.preventDefault();
+  const form = event.target;
+
+  try {
+    await request('/api/admin/donations/manual', {
+      method: 'POST',
+      body: {
+        amount: form.elements.amount.value,
+        name: form.elements.name.value,
+        note: form.elements.note.value,
+        message: form.elements.message.value,
+        anonymous: form.elements.anonymous.checked,
+      },
+    });
+
+    form.reset();
+    form.closest('details')?.removeAttribute('open');
+    toast('Doação registrada e somada ao total. ✅', 'success');
+    await Promise.all([loadOverview(), loadDonations()]);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+/* ------------------------------------------------------ Integração (API) */
+function describeSource(source) {
+  if (source === 'env') return '· vindo do .env (não editável aqui)';
+  if (source === 'painel') return '· salvo no painel';
+  return '· não configurado';
+}
+
+async function loadGateway() {
+  const status = await request('/api/admin/gateway');
+  const form = el('gatewayForm');
+
+  setText('gwProvider', status.provider);
+  setText('gwConfigured', status.configured ? '✅ ok' : '❌ faltando');
+  setText(
+    'gwType',
+    status.usingAccessKey ? 'chave de acesso' : status.usingLegacy ? 'legada ci/cs' : '—'
+  );
+  setText('gwWebhook', status.webhookUrl || '(sem URL pública configurada)');
+
+  for (const field of status.fields) {
+    const label = field.filled ? `${field.masked} ${describeSource(field.source)}` : '· vazio';
+    setText(`gw${field.field.charAt(0).toUpperCase()}${field.field.slice(1)}`, label);
+
+    const input = form.elements[field.field];
+    if (input) {
+      input.disabled = !field.editable;
+      input.placeholder = field.editable
+        ? input.placeholder.replace(' (definido no .env)', '')
+        : 'definido no .env';
+    }
+  }
+
+  const warning = el('gatewayWarning');
+  const messages = [];
+
+  if (!status.canStoreSecrets) {
+    messages.push(
+      '⚠️ Defina um SESSION_SECRET fixo no .env antes de salvar credenciais aqui: sem ele a chave de criptografia muda a cada reinício e o que for salvo se perde.'
+    );
+  }
+  if (status.usingLegacy) {
+    messages.push(
+      `⚠️ Você está usando a credencial legada ci/cs, que a MisticPay desliga em ${status.legacySunset}. Migre para a chave de acesso (pk_/sk_).`
+    );
+  }
+
+  warning.textContent = messages.join(' ');
+  warning.classList.toggle('hidden', messages.length === 0);
+}
+
+async function saveGateway(event) {
+  event.preventDefault();
+  const form = event.target;
+
+  // Campo vazio = "não mexer". Só enviamos o que foi realmente preenchido.
+  const payload = {};
+  for (const field of ['publicKey', 'secretKey', 'clientId', 'clientSecret', 'webhookToken']) {
+    const input = form.elements[field];
+    if (!input || input.disabled) continue;
+    const value = input.value.trim();
+    if (value !== '') payload[field] = value;
+  }
+
+  if (!Object.keys(payload).length) {
+    toast('Preencha ao menos um campo para salvar.', 'error');
+    return;
+  }
+
+  try {
+    const result = await request('/api/admin/gateway', { method: 'PUT', body: payload });
+    form.reset();
+    toast(`Credenciais salvas (${result.saved.length} campo(s)). 🔐`, 'success');
+    if (result.ignored.length) {
+      toast(`Ignorados porque vêm do .env: ${result.ignored.join(', ')}`, 'error');
+    }
+    await loadGateway();
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+
+async function testGateway() {
+  setText('gwTest', 'testando…');
+  try {
+    const result = await request('/api/admin/gateway/test', { method: 'POST' });
+    setText('gwTest', result.ok ? '✅ ok' : '❌ falhou');
+    toast(result.message, result.ok ? 'success' : 'error');
+  } catch (error) {
+    setText('gwTest', '❌ falhou');
+    toast(error.message, 'error');
+  }
+}
+
 /* ---------------------------------------------------------------- Boot */
 async function boot() {
   try {
     const me = await request('/api/admin/me');
     setText('adminUser', me.admin.username);
     showDashboard();
-    await Promise.all([loadOverview(), loadDonations(), loadSettings()]);
+    await Promise.all([loadOverview(), loadDonations(), loadSettings(), loadGateway()]);
   } catch {
     showLogin();
   }
@@ -313,6 +497,8 @@ function wire() {
   });
 
   el('settingsForm').addEventListener('submit', saveSettings);
+  el('manualForm').addEventListener('submit', submitManualDonation);
+  el('gatewayForm').addEventListener('submit', saveGateway);
 
   el('passwordForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -372,6 +558,8 @@ function wire() {
       loadDonations();
     }
     if (action === 'reload-settings') loadSettings();
+    if (action === 'reload-gateway') loadGateway();
+    if (action === 'test-gateway') testGateway();
     if (action === 'reconcile') {
       try {
         const result = await request('/api/admin/reconcile', { method: 'POST' });

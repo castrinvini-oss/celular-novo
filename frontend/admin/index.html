@@ -81,6 +81,7 @@
         <div class="kpi kpi--raised">
           <span class="kpi__label">💰 Arrecadado</span>
           <span class="kpi__value" data-bind="kpiRaised">—</span>
+          <small class="muted" style="font-size: 0.74rem" data-bind="kpiBreakdown"></small>
         </div>
         <div class="kpi kpi--supporters">
           <span class="kpi__label">❤️ Apoiadores</span>
@@ -95,11 +96,61 @@
       <nav class="tabs">
         <button class="tab is-active" type="button" data-tab="donations">Doações</button>
         <button class="tab" type="button" data-tab="settings">Configurações</button>
+        <button class="tab" type="button" data-tab="gateway">Integração (API)</button>
         <button class="tab" type="button" data-tab="account">Conta</button>
       </nav>
 
       <!-- ------------------------- Aba: doações ------------------------- -->
       <section data-pane="donations">
+        <!-- Registro de doação recebida fora da plataforma -->
+        <details class="card" style="margin-bottom: 16px">
+          <summary style="cursor: pointer; font-family: var(--font-display); font-weight: 700">
+            ➕ Registrar doação recebida por fora (Pix direto, dinheiro, outro app)
+          </summary>
+
+          <p class="muted" style="font-size: 0.86rem; margin-top: 12px">
+            Entra no total da campanha como lançamento <strong>MANUAL</strong>, identificado e
+            separável do que a MisticPay confirmou. Use para dinheiro que você realmente recebeu.
+          </p>
+
+          <form data-el="manualForm" method="post">
+            <div class="settings-grid settings-grid--2">
+              <label class="field">
+                <span class="field__label">Valor (R$) *</span>
+                <input class="input" name="amount" inputmode="decimal" placeholder="50,00" required />
+              </label>
+              <label class="field">
+                <span class="field__label">Nome do doador (opcional)</span>
+                <input class="input" name="name" maxlength="40" placeholder="Aparece na lista pública" />
+              </label>
+            </div>
+
+            <label class="field">
+              <span class="field__label">De onde veio esse valor? *</span>
+              <input
+                class="input"
+                name="note"
+                maxlength="160"
+                placeholder="Ex.: Pix direto na minha chave em 18/09"
+                required
+              />
+              <small class="field__hint">Fica registrado no banco junto com o seu usuário.</small>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Recadinho do doador (opcional)</span>
+              <input class="input" name="message" maxlength="140" />
+            </label>
+
+            <label class="switch">
+              <input type="checkbox" name="anonymous" />
+              <span class="switch__text">Registrar como apoiador anônimo</span>
+            </label>
+
+            <button class="btn btn--primary" type="submit">Registrar doação</button>
+          </form>
+        </details>
+
         <div class="card">
           <div class="filters">
             <button class="chip is-active" type="button" data-filter="ALL">Todas</button>
@@ -126,9 +177,10 @@
             <table>
               <thead>
                 <tr>
-                  <th>Nome</th>
+                  <th>Quem doou</th>
                   <th>Valor</th>
                   <th>Status</th>
+                  <th>Origem</th>
                   <th>Transaction ID</th>
                   <th>Criada em</th>
                   <th>Paga em</th>
@@ -137,7 +189,7 @@
               </thead>
               <tbody data-el="donationsBody">
                 <tr>
-                  <td colspan="7" class="muted" style="text-align: center; padding: 28px">
+                  <td colspan="8" class="muted" style="text-align: center; padding: 28px">
                     Carregando...
                   </td>
                 </tr>
@@ -237,6 +289,116 @@
           <div class="form-actions">
             <button class="btn btn--primary" type="submit">Salvar configurações</button>
             <button class="btn btn--ghost" type="button" data-action="reload-settings">Desfazer</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ------------------------ Aba: integração ----------------------- -->
+      <section data-pane="gateway" class="hidden">
+        <div class="card" style="margin-bottom: 16px">
+          <h2 class="section-title">Situação da integração</h2>
+
+          <div class="kpis" style="margin-bottom: 0">
+            <div class="kpi">
+              <span class="kpi__label">Gateway</span>
+              <span class="kpi__value" style="font-size: 1.05rem" data-bind="gwProvider">—</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi__label">Credenciais</span>
+              <span class="kpi__value" style="font-size: 1.05rem" data-bind="gwConfigured">—</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi__label">Tipo</span>
+              <span class="kpi__value" style="font-size: 1.05rem" data-bind="gwType">—</span>
+            </div>
+            <div class="kpi">
+              <span class="kpi__label">Teste</span>
+              <span class="kpi__value" style="font-size: 1.05rem" data-bind="gwTest">—</span>
+            </div>
+          </div>
+
+          <p class="muted" style="font-size: 0.85rem; margin-top: 14px">
+            URL de webhook informada ao gateway:
+            <code data-bind="gwWebhook" style="word-break: break-all">—</code>
+          </p>
+
+          <button class="btn btn--sm" type="button" data-action="test-gateway" style="margin-top: 8px">
+            🔌 Testar credenciais
+          </button>
+        </div>
+
+        <form class="card" data-el="gatewayForm" method="post">
+          <h2 class="section-title">Credenciais da MisticPay</h2>
+
+          <p class="muted" style="font-size: 0.86rem">
+            Crie a chave no painel da MisticPay em <strong>API → Chaves de Acesso</strong>, com o
+            escopo <strong>cashin</strong>. Os valores são gravados criptografados e
+            <strong>nunca voltam para esta tela</strong> — só a versão mascarada. Deixe o campo em
+            branco para manter o que já está salvo.
+          </p>
+
+          <p class="form-note hidden" data-el="gatewayWarning"></p>
+
+          <div class="settings-grid settings-grid--2">
+            <label class="field">
+              <span class="field__label">
+                Chave pública (pk_) <span class="muted" data-bind="gwPublicKey"></span>
+              </span>
+              <input class="input" name="publicKey" autocomplete="off" placeholder="pk_..." />
+            </label>
+            <label class="field">
+              <span class="field__label">
+                Chave secreta (sk_) <span class="muted" data-bind="gwSecretKey"></span>
+              </span>
+              <input
+                class="input"
+                name="secretKey"
+                type="password"
+                autocomplete="new-password"
+                placeholder="sk_..."
+              />
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field__label">
+              Token do webhook <span class="muted" data-bind="gwWebhookToken"></span>
+            </span>
+            <input class="input" name="webhookToken" autocomplete="off" placeholder="token aleatório" />
+            <small class="field__hint">
+              Precisa ser o mesmo valor no final da URL de webhook cadastrada na MisticPay.
+            </small>
+          </label>
+
+          <details style="margin-bottom: 14px">
+            <summary class="muted" style="cursor: pointer; font-size: 0.86rem">
+              Credencial legada ci/cs (desligada pela MisticPay em 30/09/2026)
+            </summary>
+            <div class="settings-grid settings-grid--2" style="margin-top: 12px">
+              <label class="field">
+                <span class="field__label">
+                  Client ID <span class="muted" data-bind="gwClientId"></span>
+                </span>
+                <input class="input" name="clientId" autocomplete="off" placeholder="ci_..." />
+              </label>
+              <label class="field">
+                <span class="field__label">
+                  Client Secret <span class="muted" data-bind="gwClientSecret"></span>
+                </span>
+                <input
+                  class="input"
+                  name="clientSecret"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="cs_..."
+                />
+              </label>
+            </div>
+          </details>
+
+          <div class="form-actions">
+            <button class="btn btn--primary" type="submit">Salvar credenciais</button>
+            <button class="btn btn--ghost" type="button" data-action="reload-gateway">Recarregar</button>
           </div>
         </form>
       </section>

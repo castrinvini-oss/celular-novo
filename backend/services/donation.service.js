@@ -13,6 +13,7 @@
 import crypto from 'node:crypto';
 import config, { resolveWebhookUrl } from '../config/env.js';
 import { getGateway } from '../gateways/index.js';
+import { getWebhookToken } from '../gateways/misticpay/credentials.js';
 import { STATUS } from '../gateways/gateway.interface.js';
 import * as donationsRepo from '../database/repositories/donations.repo.js';
 import { getDonationLimits, getCampaignState } from './campaign.service.js';
@@ -79,7 +80,7 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
   const input = await validateDonationInput(rawInput);
   const gateway = getGateway();
 
-  if (!gateway.isConfigured()) {
+  if (!(await gateway.isConfigured())) {
     throw new ValidationError(
       'O sistema de pagamento ainda nao foi configurado. Tente novamente mais tarde.'
     );
@@ -100,7 +101,7 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
     payerName: input.payerName,
     payerDocument: input.document,
     description: `Doacao ${formatBRL(input.amountCents)} - ${campaign.projectName}`,
-    webhookUrl: resolveWebhookUrl(),
+    webhookUrl: resolveWebhookUrl(await getWebhookToken()),
   });
 
   const donation = await donationsRepo.createDonation({
@@ -126,6 +127,76 @@ export async function createPixDonation(rawInput, { clientIp = null } = {}) {
   });
 
   return donation;
+}
+
+/** Teto de sanidade para lancamento manual: R$ 1.000.000,00. */
+const MANUAL_MAX_CENTS = 100000000;
+
+/**
+ * Registra uma doacao recebida FORA da plataforma (Pix direto na sua chave,
+ * dinheiro, outro app) e ja confirmada por voce.
+ *
+ * Isto NAO e "editar o total": o valor entra como um lancamento identificado
+ * (source = 'MANUAL'), com quem registrou e o motivo, e continua sendo somado
+ * pela mesma regra dos demais (SUM sobre PAID). O que veio da MisticPay
+ * permanece intocavel e da para separar as duas origens a qualquer momento.
+ */
+export async function registerManualDonation(rawInput, { adminUsername = 'admin' } = {}) {
+  const amountCents = parseAmountToCents(rawInput?.amount);
+
+  if (amountCents === null || amountCents <= 0) {
+    throw new ValidationError('Informe um valor valido.', { field: 'amount' });
+  }
+  if (amountCents > MANUAL_MAX_CENTS) {
+    throw new ValidationError(`Valor acima do limite de ${formatBRL(MANUAL_MAX_CENTS)}.`, {
+      field: 'amount',
+    });
+  }
+
+  const note = cleanText(rawInput?.note, 160);
+  if (note.length < 3) {
+    throw new ValidationError(
+      'Descreva de onde veio essa doacao (ex.: "Pix direto na chave", "dinheiro na mao").',
+      { field: 'note' }
+    );
+  }
+
+  const anonymous = rawInput?.anonymous === true || rawInput?.anonymous === 'true';
+  const displayName = anonymous ? null : cleanText(rawInput?.name, 40) || null;
+  const message = cleanText(rawInput?.message, 140) || null;
+
+  const donation = await donationsRepo.createManualDonation({
+    transactionId: `manual-${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
+    name: displayName,
+    payerName: displayName ?? 'Doacao externa',
+    amount: amountCents,
+    message,
+    adminNote: `${note} (registrado por ${cleanText(adminUsername, 40)})`,
+  });
+
+  logger.info('Doacao externa registrada no painel', {
+    transactionId: donation.transaction_id,
+    amount: amountCents,
+    admin: adminUsername,
+  });
+
+  return donation;
+}
+
+/** Remove um lancamento manual. Doacoes vindas do gateway nunca sao apagadas. */
+export async function removeManualDonation(transactionId, { adminUsername = 'admin' } = {}) {
+  const donation = await donationsRepo.findByTransactionId(transactionId);
+  if (!donation) throw new NotFoundError('Lancamento nao encontrado.');
+
+  if (donation.source !== 'MANUAL') {
+    throw new ValidationError(
+      'Só é possível remover lançamentos manuais. Doações confirmadas pela MisticPay são permanentes.'
+    );
+  }
+
+  const removed = await donationsRepo.deleteManualDonation(transactionId);
+  logger.info('Lancamento manual removido', { transactionId, admin: adminUsername });
+  return removed;
 }
 
 /** Formato seguro enviado ao navegador (nada sensivel). */

@@ -187,6 +187,11 @@ DATABASE_URL="postgresql://postgres.xxxx:SENHA@aws-0-sa-east-1.pooler.supabase.c
 Escolha um usuário e uma senha forte (mínimo 8 caracteres). Depois acesse
 `https://SEU-PROJETO.vercel.app/admin` e faça login.
 
+> Se preferir, dá para cadastrar a `pk_`/`sk_` da MisticPay direto no painel, em
+> **Integração (API)**, em vez de usar `MISTICPAY_PUBLIC_KEY` / `MISTICPAY_SECRET_KEY`.
+> Funciona porque o `SESSION_SECRET` na Vercel é fixo. Ainda assim, variável de ambiente
+> continua sendo o caminho recomendado: não depende do banco estar de pé.
+
 ---
 
 ## Parte 3 — Cron (rede de segurança)

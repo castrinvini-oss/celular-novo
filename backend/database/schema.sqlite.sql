@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS donations (
   amount_mismatch        INTEGER NOT NULL DEFAULT 0,
   raw_confirmation       TEXT,              -- payload bruto da confirmacao
 
+  -- Origem do registro:
+  --   GATEWAY = Pix confirmado pela MisticPay (unico caminho automatico)
+  --   MANUAL  = doacao recebida por fora e registrada pelo painel
+  source                 TEXT    NOT NULL DEFAULT 'GATEWAY',
+  admin_note             TEXT,
+
   created_at             TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at             TEXT    NOT NULL DEFAULT (datetime('now')),
   paid_at                TEXT,
@@ -112,3 +118,12 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts (ip, created_at);
+
+-- --------------------------------------------------------------------------
+-- Segredos cadastrados pelo painel (credenciais do gateway), cifrados
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS secure_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

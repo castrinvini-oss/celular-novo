@@ -18,7 +18,7 @@
  */
 import crypto from 'node:crypto';
 import { Router } from 'express';
-import config from '../config/env.js';
+import { getWebhookToken } from '../gateways/misticpay/credentials.js';
 import { processWebhookEvent } from '../services/donation.service.js';
 import { webhookLimiter } from '../api/middleware/rateLimit.js';
 import { asyncHandler } from '../api/middleware/errorHandler.js';
@@ -33,17 +33,16 @@ function safeEquals(a, b) {
   return crypto.timingSafeEqual(bufferA, bufferB);
 }
 
-function tokenIsValid(req) {
-  const expected = config.gateway.misticpay.webhookToken;
+async function tokenIsValid(req) {
+  const expected = await getWebhookToken();
   if (!expected) return true; // sem token configurado, nao ha o que validar
 
-  const received =
-    req.params.token || req.get('x-webhook-token') || req.query.token || '';
+  const received = req.params.token || req.get('x-webhook-token') || req.query.token || '';
   return safeEquals(received, expected);
 }
 
 async function handleWebhook(req, res) {
-  if (!tokenIsValid(req)) {
+  if (!(await tokenIsValid(req))) {
     logger.warn('Webhook recusado: token invalido', { ip: req.ip });
     res.status(401).json({ error: { code: 'INVALID_TOKEN', message: 'Token invalido.' } });
     return;

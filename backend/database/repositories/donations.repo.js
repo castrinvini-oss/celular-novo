@@ -13,7 +13,7 @@ const PUBLIC_COLUMNS = `
   id, transaction_id, gateway_transaction_id, gateway, name, payer_name,
   payer_document_masked, amount, status, message, pix_copy_paste,
   pix_qrcode_base64, pix_qrcode_url, last_checked_at, paid_amount,
-  amount_mismatch, created_at, updated_at, paid_at, expires_at
+  amount_mismatch, source, admin_note, created_at, updated_at, paid_at, expires_at
 `;
 
 export async function createDonation(data) {
@@ -141,6 +141,63 @@ export async function getTotals() {
   };
 }
 
+/**
+ * Registra uma doacao recebida FORA do gateway (Pix direto, dinheiro, outro
+ * app) ja como paga.
+ *
+ * Fica marcada com source = 'MANUAL' e guarda a anotacao de quem registrou,
+ * entao o total da campanha continua auditavel: da para separar, a qualquer
+ * momento, o que veio confirmado pela MisticPay do que foi lancado a mao.
+ * As doacoes do gateway continuam sendo criadas exclusivamente pelo fluxo
+ * automatico - este caminho nunca toca nelas.
+ */
+export async function createManualDonation(data) {
+  const s = await sql();
+
+  await run(
+    `INSERT INTO donations (
+       transaction_id, gateway, name, payer_name, amount, status, message,
+       source, admin_note, paid_at
+     ) VALUES (?, 'manual', ?, ?, ?, 'PAID', ?, 'MANUAL', ?, ${s.now})`,
+    [
+      data.transactionId,
+      data.name ?? null,
+      data.payerName,
+      data.amount,
+      data.message ?? null,
+      data.adminNote ?? null,
+    ]
+  );
+
+  return findByTransactionId(data.transactionId);
+}
+
+/** Remove um lancamento manual. Doacoes do gateway nunca sao apagadas. */
+export async function deleteManualDonation(transactionId) {
+  const changes = await run(
+    "DELETE FROM donations WHERE transaction_id = ? AND source = 'MANUAL'",
+    [String(transactionId)]
+  );
+  return changes > 0;
+}
+
+/** Quanto do total veio de cada origem (para o painel). */
+export async function getTotalsBySource() {
+  const rows = await all(
+    `SELECT source, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS quantidade
+       FROM donations
+      WHERE status = 'PAID'
+      GROUP BY source`
+  );
+
+  const totals = { GATEWAY: { cents: 0, count: 0 }, MANUAL: { cents: 0, count: 0 } };
+  for (const item of rows) {
+    const key = item.source === 'MANUAL' ? 'MANUAL' : 'GATEWAY';
+    totals[key] = { cents: Number(item.total), count: Number(item.quantidade) };
+  }
+  return totals;
+}
+
 /** Ultimas doacoes confirmadas para a vitrine publica. */
 export async function listRecentPaid(limit = 20) {
   const s = await sql();
@@ -195,7 +252,7 @@ export async function listForAdmin({ status = 'ALL', page = 1, perPage = 25, sea
   const items = await all(
     `SELECT id, transaction_id, gateway_transaction_id, name, payer_name,
             payer_document_masked, amount, paid_amount, amount_mismatch,
-            status, message, created_at, paid_at
+            source, admin_note, status, message, created_at, paid_at
        FROM donations
        ${where}
       ORDER BY id DESC

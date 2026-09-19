@@ -135,8 +135,34 @@ export async function migrate() {
   const schema = fs.readFileSync(path.join(here, file), 'utf8');
 
   await current.exec(schema);
+  await applyColumnMigrations();
   await seedSettings();
   return current;
+}
+
+/**
+ * Colunas adicionadas depois da primeira versao.
+ *
+ * CREATE TABLE IF NOT EXISTS nao altera tabela que ja existe, entao bancos
+ * criados antes precisam do ALTER TABLE. Rodar de novo e inofensivo: o erro
+ * de "coluna ja existe" e ignorado.
+ */
+const ADDED_COLUMNS = [
+  ['donations', 'source', "TEXT NOT NULL DEFAULT 'GATEWAY'"],
+  ['donations', 'admin_note', 'TEXT'],
+];
+
+async function applyColumnMigrations() {
+  for (const [table, column, definition] of ADDED_COLUMNS) {
+    try {
+      await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    } catch (error) {
+      const message = String(error?.message ?? '').toLowerCase();
+      const alreadyExists =
+        message.includes('duplicate column') || message.includes('already exists');
+      if (!alreadyExists) throw error;
+    }
+  }
 }
 
 /** Insere apenas as chaves de configuracao que ainda nao existem. */

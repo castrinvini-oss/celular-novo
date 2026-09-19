@@ -166,7 +166,13 @@ MISTICPAY_CLIENT_SECRET=cs_...
 
 Quando as duas existem, a chave de acesso tem prioridade.
 
-### 3. Conferir a configuração
+### 3. Ou cadastre pelo painel
+
+Se preferir não mexer em variável de ambiente, dá para colar a `pk_`/`sk_` em
+`/admin → Integração (API)`. Os detalhes (criptografia, prioridade do `.env`, teste de
+conexão) estão na seção do painel administrativo, mais abaixo.
+
+### 4. Conferir a configuração
 
 ```bash
 npm run check-gateway
@@ -257,13 +263,47 @@ npm run create-admin
 
 O painel mostra:
 
-- **KPIs**: meta, arrecadado, apoiadores, progresso.
-- **Doações**: nome, valor, status, transaction ID, data de criação e de pagamento,
-  com filtros (todas / pagas / pendentes / canceladas / falhas / expiradas), busca,
-  exportação CSV, botão **Reconferir** por doação e **Reconferir pendentes** em lote.
+- **KPIs**: meta, arrecadado (separando o que veio do Pix e o que foi lançado à mão),
+  apoiadores e progresso.
+- **Doações**: quem doou (nome público, nome do pagador, CPF mascarado e recado), valor,
+  status, origem, transaction ID e datas — com filtros (todas / pagas / pendentes /
+  canceladas / falhas / expiradas), busca, exportação CSV, **Reconferir** por doação e
+  **Reconferir pendentes** em lote.
+- **Doação recebida por fora**: registra Pix direto, dinheiro ou outro app como lançamento
+  `MANUAL` (veja abaixo).
 - **Configurações**: nome do projeto, título, descrição, texto da campanha, nome e
   imagem do celular, meta, valores mínimo e máximo, valores rápidos e textos de meta atingida.
+- **Integração (API)**: cadastro das credenciais da MisticPay direto pelo painel, com teste
+  de conexão.
 - **Conta**: troca de senha.
+
+### Doações recebidas fora da plataforma
+
+Se alguém te mandar Pix direto na sua chave, te pagar em dinheiro ou usar outro app, use
+**Doações → Registrar doação recebida por fora**. O valor entra no total da campanha como
+um lançamento `MANUAL`, gravado com o motivo e o usuário que registrou.
+
+Isso **não é um campo que sobrescreve o total**: o número continua sendo
+`SUM(amount) WHERE status = 'PAID'`, e a coluna `source` permite separar, a qualquer
+momento, o que a MisticPay confirmou (`GATEWAY`) do que foi lançado à mão (`MANUAL`).
+Lançamentos manuais podem ser removidos; doações confirmadas pelo gateway, nunca.
+
+### Credenciais pelo painel
+
+Na aba **Integração (API)** dá para colar a `pk_`/`sk_` sem mexer em variável de ambiente.
+Como funciona:
+
+- as variáveis de ambiente **têm prioridade** — o que vem do `.env` aparece como
+  "definido no .env" e o campo fica bloqueado no painel;
+- o que é cadastrado pelo painel é gravado **criptografado** (AES-256-GCM, chave derivada do
+  `SESSION_SECRET`) na tabela `secure_settings`;
+- o valor real **nunca volta para a tela** — só a versão mascarada (`sk_1234…cdef`);
+- o botão **Testar credenciais** consulta uma transação inexistente na MisticPay só para ver
+  se a autenticação é aceita (401/403 = credencial inválida ou sem escopo).
+
+> ⚠️ Para usar esse cadastro é obrigatório ter um `SESSION_SECRET` fixo no `.env`. Sem ele a
+> chave de criptografia é sorteada a cada reinício e o que foi salvo vira ilegível — o painel
+> avisa e recusa salvar nesse caso.
 
 Senhas são guardadas com **scrypt**; a sessão é um cookie `HttpOnly` assinado com HMAC,
 válido por 12 horas e revogável (a sessão também existe na tabela `admin_sessions`).
@@ -295,14 +335,17 @@ Os dois esquemas são equivalentes. **Todos os valores em centavos (INTEGER).**
 | `payer_document_masked` | CPF mascarado |
 | `amount` | valor cobrado, em centavos |
 | `status` | `PENDING` · `PAID` · `EXPIRED` · `CANCELLED` · `FAILED` |
+| `source` | `GATEWAY` (confirmado pela MisticPay) ou `MANUAL` (lançado no painel) |
+| `admin_note` | de onde veio o valor, nos lançamentos manuais |
 | `created_at` / `paid_at` | datas (UTC) |
 | `paid_amount` / `amount_mismatch` | valor confirmado pelo gateway e flag de divergência |
 
 Só `status = 'PAID'` entra no cálculo da arrecadação.
 
 Outras tabelas: `gateway_events` (auditoria de webhooks), `settings` (configurações
-editáveis), `admins`, `admin_sessions` e `login_attempts` (bloqueio de força bruta que
-funciona também em serverless, onde um limitador em memória não serviria).
+editáveis), `secure_settings` (credenciais do gateway, cifradas), `admins`,
+`admin_sessions` e `login_attempts` (bloqueio de força bruta que funciona também em
+serverless, onde um limitador em memória não serviria).
 
 ### Cálculo
 
@@ -327,6 +370,10 @@ restante         = max(0, meta - total_arrecadado)
 | `GET` | `/api/admin/overview` · `/donations` · `/settings` | dados do painel |
 | `PUT` | `/api/admin/settings` | altera a campanha |
 | `POST` | `/api/admin/donations/:id/recheck` · `/reconcile` | reconferência manual |
+| `POST` | `/api/admin/donations/manual` | registra doação recebida fora da plataforma |
+| `DELETE` | `/api/admin/donations/:id` | remove lançamento manual (só `source = MANUAL`) |
+| `GET`/`PUT` | `/api/admin/gateway` | situação e cadastro das credenciais do gateway |
+| `POST` | `/api/admin/gateway/test` | testa as credenciais na API da MisticPay |
 | `GET` | `/api/cron/reconcile` | manutenção periódica (exige `Authorization: Bearer $CRON_SECRET`) |
 | `GET` | `/api/health` | healthcheck (mostra qual banco está em uso) |
 

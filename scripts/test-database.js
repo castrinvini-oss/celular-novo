@@ -18,13 +18,15 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
-import { setDriver, migrate, closeDb } from '../backend/database/db.js';
+import { setDriver, migrate, closeDb, one } from '../backend/database/db.js';
 import { createSqliteDriver } from '../backend/database/drivers/sqlite.js';
 import { createPostgresDriver } from '../backend/database/drivers/postgres.js';
 
 import * as donations from '../backend/database/repositories/donations.repo.js';
 import * as admins from '../backend/database/repositories/admin.repo.js';
 import * as settings from '../backend/database/repositories/settings.repo.js';
+import * as secrets from '../backend/database/repositories/secrets.repo.js';
+import { maskSecret } from '../backend/utils/crypto.js';
 import { getCampaignState, updateCampaignSettings } from '../backend/services/campaign.service.js';
 import { parseSqlDatetime } from '../backend/utils/dates.js';
 
@@ -180,6 +182,62 @@ async function runSuite(name) {
     assert.equal(list[0].transaction_id, pending.transactionId);
   });
 
+  await check('doacao externa (manual) entra no total e fica identificada', async () => {
+    const antes = await donations.getTotals();
+
+    const manual = await donations.createManualDonation({
+      transactionId: `manual-${Math.random().toString(36).slice(2, 10)}`,
+      name: 'Tia Zuleide',
+      payerName: 'Tia Zuleide',
+      amount: 5000,
+      adminNote: 'Pix direto na chave (registrado por chefe)',
+    });
+
+    assert.equal(manual.status, 'PAID');
+    assert.equal(manual.source, 'MANUAL');
+    assert.ok(manual.paid_at, 'manual deveria nascer com paid_at');
+
+    const depois = await donations.getTotals();
+    assert.equal(depois.raisedCents, antes.raisedCents + 5000);
+
+    const bySource = await donations.getTotalsBySource();
+    assert.equal(bySource.MANUAL.cents, 5000);
+    assert.equal(bySource.GATEWAY.cents, antes.raisedCents);
+  });
+
+  await check('lancamento manual pode ser removido; o do gateway nao', async () => {
+    const manual = await donations.createManualDonation({
+      transactionId: 'manual-para-remover',
+      payerName: 'Teste',
+      amount: 300,
+      adminNote: 'teste',
+    });
+    assert.ok(manual);
+
+    assert.equal(await donations.deleteManualDonation('manual-para-remover'), true);
+    assert.equal(await donations.findByTransactionId('manual-para-remover'), null);
+
+    // A doacao vinda do gateway continua intocada por este caminho.
+    assert.equal(await donations.deleteManualDonation(first.transactionId), false);
+    assert.ok(await donations.findByTransactionId(first.transactionId));
+  });
+
+  await check('credenciais do painel sao guardadas cifradas', async () => {
+    await secrets.setSecret('misticpay_secret_key', 'sk_super_secreta_123456');
+
+    const raw = await one('SELECT value FROM secure_settings WHERE key = ?', [
+      'misticpay_secret_key',
+    ]);
+    assert.ok(raw.value.startsWith('v1.'), 'deveria estar cifrado');
+    assert.ok(!raw.value.includes('sk_super_secreta'), 'texto puro nao pode aparecer no banco');
+
+    assert.equal(await secrets.getSecret('misticpay_secret_key'), 'sk_super_secreta_123456');
+    assert.equal(maskSecret('sk_super_secreta_123456'), 'sk_sup…3456');
+
+    await secrets.deleteSecret('misticpay_secret_key');
+    assert.equal(await secrets.getSecret('misticpay_secret_key'), null);
+  });
+
   await check('evento de gateway registrado para auditoria', async () => {
     await donations.recordGatewayEvent({
       eventType: 'DEPOSITO',
@@ -234,10 +292,13 @@ async function runSuite(name) {
   });
 
   await check('meta atingida limita a barra em 100%', async () => {
-    await updateCampaignSettings({ goal_cents: 1000 });
+    const { raisedCents } = await donations.getTotals();
+    // Meta abaixo do arrecadado: o percentual real passa de 100, a barra nao.
+    await updateCampaignSettings({ goal_cents: Math.floor(raisedCents / 2) });
+
     const campaign = await getCampaignState();
     assert.equal(campaign.goalReached, true);
-    assert.equal(campaign.percent, 200);
+    assert.ok(campaign.percent > 100, 'percentual real deveria passar de 100');
     assert.equal(campaign.percentCapped, 100);
     assert.equal(campaign.remainingCents, 0);
   });

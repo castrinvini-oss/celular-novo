@@ -10,13 +10,16 @@
  *     /api/transactions/create e /api/transactions/check e sera desligada
  *     em 30/09/2026.
  *
- * Este arquivo roda SOMENTE no backend. As credenciais nunca saem daqui.
+ * As credenciais vem do .env ou do cadastro cifrado feito no painel
+ * (ver credentials.js). Este arquivo roda SOMENTE no backend.
  */
 import config from '../../config/env.js';
 import logger from '../../utils/logger.js';
 import { GatewayError } from '../gateway.interface.js';
+import { getMisticpayCredentials } from './credentials.js';
 
-const mp = config.gateway.misticpay;
+const apiUrl = config.gateway.misticpay.apiUrl;
+const timeoutMs = config.gateway.misticpay.timeoutMs;
 
 /** Endpoints usados pela aplicacao (todos vindos da documentacao oficial). */
 export const ENDPOINTS = {
@@ -24,35 +27,39 @@ export const ENDPOINTS = {
   checkTransaction: '/api/transactions/check',
 };
 
-export function hasAccessKey() {
-  return Boolean(mp.publicKey && mp.secretKey);
+export async function hasAccessKey() {
+  const { publicKey, secretKey } = await getMisticpayCredentials();
+  return Boolean(publicKey && secretKey);
 }
 
-export function hasLegacyCredentials() {
-  return Boolean(mp.clientId && mp.clientSecret);
+export async function hasLegacyCredentials() {
+  const { clientId, clientSecret } = await getMisticpayCredentials();
+  return Boolean(clientId && clientSecret);
 }
 
-export function isConfigured() {
-  return hasAccessKey() || hasLegacyCredentials();
+export async function isConfigured() {
+  return (await hasAccessKey()) || (await hasLegacyCredentials());
 }
 
 /**
  * Monta os headers de autenticacao.
  * @param {{ allowLegacy?: boolean }} options
  */
-export function authHeaders({ allowLegacy = false } = {}) {
-  if (hasAccessKey()) {
-    const basic = Buffer.from(`${mp.publicKey}:${mp.secretKey}`).toString('base64');
+export async function authHeaders({ allowLegacy = false } = {}) {
+  const { publicKey, secretKey, clientId, clientSecret } = await getMisticpayCredentials();
+
+  if (publicKey && secretKey) {
+    const basic = Buffer.from(`${publicKey}:${secretKey}`).toString('base64');
     return { Authorization: `Basic ${basic}` };
   }
 
-  if (allowLegacy && hasLegacyCredentials()) {
+  if (allowLegacy && clientId && clientSecret) {
     // Formato legado: as credenciais vao em headers proprios "ci" e "cs".
-    return { ci: mp.clientId, cs: mp.clientSecret };
+    return { ci: clientId, cs: clientSecret };
   }
 
   throw new GatewayError(
-    'Credenciais da MisticPay nao configuradas. Defina MISTICPAY_PUBLIC_KEY e MISTICPAY_SECRET_KEY no .env.',
+    'Credenciais da MisticPay nao configuradas. Cadastre a chave de acesso (pk_/sk_) no painel, em Integracao, ou defina MISTICPAY_PUBLIC_KEY e MISTICPAY_SECRET_KEY no .env.',
     { statusCode: 503 }
   );
 }
@@ -73,11 +80,11 @@ function safeForLog(payload) {
  * @param {{ method?: string, body?: Object, allowLegacy?: boolean }} options
  */
 export async function request(endpoint, { method = 'POST', body = null, allowLegacy = false } = {}) {
-  const url = `${mp.apiUrl}${endpoint}`;
+  const url = `${apiUrl}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-    ...authHeaders({ allowLegacy }),
+    ...(await authHeaders({ allowLegacy })),
   };
 
   let response;
@@ -86,7 +93,7 @@ export async function request(endpoint, { method = 'POST', body = null, allowLeg
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(mp.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     logger.error('Falha de rede ao chamar a MisticPay', {
@@ -114,8 +121,7 @@ export async function request(endpoint, { method = 'POST', body = null, allowLeg
       body: safeForLog(data),
     });
 
-    const message =
-      data?.message || data?.error || `MisticPay retornou HTTP ${response.status}.`;
+    const message = data?.message || data?.error || `MisticPay retornou HTTP ${response.status}.`;
 
     throw new GatewayError(message, {
       statusCode: response.status === 429 ? 429 : 502,
