@@ -13,7 +13,8 @@
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
     "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
     "check-gateway": "node --env-file-if-exists=.env scripts/check-gateway.js",
-    "test": "node --env-file-if-exists=.env scripts/test-database.js"
+    "test": "node --env-file-if-exists=.env scripts/test-database.js",
+    "test:api": "node scripts/test-serverless.js"
   },
   "dependencies": {
     "express": "^5.1.0",

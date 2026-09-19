@@ -126,6 +126,13 @@ npm test
 Os testes rodam a mesma bateria **nos dois bancos**: SQLite em arquivo temporário e
 PostgreSQL de verdade via PGlite (WebAssembly), sem precisar instalar servidor nenhum.
 
+E para conferir a aplicação no mesmo formato em que ela roda na Vercel (a função
+serverless de `api/index.js`, com PostgreSQL por trás):
+
+```bash
+npm run test:api
+```
+
 Abra <http://localhost:3000> (campanha) e <http://localhost:3000/admin> (painel).
 
 Sem credenciais da MisticPay a página abre normalmente; só a geração do Pix fica

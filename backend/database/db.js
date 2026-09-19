@@ -124,7 +124,14 @@ export async function sql() {
   return DIALECTS[current.dialect];
 }
 
+/**
+ * Qual banco esta realmente em uso.
+ *
+ * Quando a conexao ja foi aberta, responde pelo driver ativo (a verdade).
+ * Antes disso, responde pela configuracao - que e o que vai acontecer.
+ */
 export function isPostgres() {
+  if (driver) return driver.dialect === 'postgres';
   return Boolean(config.databaseUrl);
 }
 
